@@ -1,0 +1,53 @@
+# Publica o PROTÓTIPO (só dados fictícios, autorização P1) no GitHub Pages a cada envio para a branch main.
+# Destino único: https://victor1923hsm.github.io/rotavhs-go/ (em qualquer outro repositório, não publica).
+# Antes de publicar, roda os mesmos testes do PC (typecheck, Vitest, verificador de privacidade).
+name: Publicar no GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    if: github.repository == 'victor1923hsm/rotavhs-go'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # Só publica o código que foi testado: os arquivos precisam bater com publicacao.manifesto.json
+      # (gerado por "npm run manifesto", que só grava depois de npm test passar).
+      - run: node scripts/verificar-publicacao.mjs conferir
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - run: npm run build
+        env:
+          BASE_PATH: /rotavhs-go/
+          VITE_PROTOTIPO: '1'
+      - run: npm run tamanho
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  publicar:
+    needs: build
+    if: github.repository == 'victor1923hsm/rotavhs-go'
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

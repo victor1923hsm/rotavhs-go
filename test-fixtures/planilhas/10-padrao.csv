@@ -1,0 +1,6 @@
+﻿Sequência;Código do pacote;Destinatário;Telefone;Endereço;Complemento;Bairro;Cidade;UF;CEP
+3;BR0000000000001;Cliente Fictício A;(62) 90000-0001;Rua das Acácias, 120;Casa 2;Jd. Primavera;Cidade Teste;GO;74000-001
+3;BR0000000000002;Cliente Fictício A;(62) 90000-0001;Rua das Acácias, 120;Casa 2;Jd. Primavera;Cidade Teste;GO;74000-001
+7;BR0000000000003;Cliente Fictício B;(62) 90000-0002;R. dos Ipês, 77;Apto 12 Bloco B;Jardim Primavera;Cidade Teste;GO;74000001
+12;BR0000000000004;Cliente Fictício C;(62) 90000-0003;Rua 10;Qd 15 Lt 22;Jd Primavera;Cidade Teste;GO;74000-001
+25;BR0000000000005;Cliente Fictício D;(62) 90000-0004;Av. Central, 1450;;Vila Nova;Cidade Teste;GO;74000-002

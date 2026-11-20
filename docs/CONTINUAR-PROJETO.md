@@ -1,0 +1,248 @@
+# RotaVHS Go — Continuar o projeto
+
+**Índice único de continuidade.** Aponta para as fontes; não as copia.
+
+## 1. Estado atual (2026-11-19, conferido para retomada com contexto limpo)
+| Item | Situação |
+|---|---|
+| Repositório | Git **local** (`main`, sem remoto). G13 aprovada: o 1º commit (planejamento + Etapa 1) pode ser feito |
+| Planejamento | ✅ **aprovado** (revisão 7, 2026-11-19): `PLANO-GERAL.md`, `ARQUITETURA.md`, `DECISOES.md` (G1–G15 aprovadas) |
+| Código | Etapas 1, 2 e 3 (2026-11-19): PWA Vite + React + TS + Tailwind; importação da planilha da SPX no aparelho (Worker), Conferência; **rota guardada no aparelho** (IndexedDB/Dexie, schema v2: situação por pacote, planos, conferência, alertas) e **exclusão verificada dos detalhes ao finalizar**. Dependências da G2 com versões exatas (só as usadas até aqui; + read-excel-file 9.3.14, dexie 4.4.7, fake-indexeddb 6.2.8 só nos testes) |
+| Implementação | Etapas 1 e 2 aprovadas (+ revisões 11 e 12). **Etapa 3: tecnicamente aceita para validação** (22:21); **aprovação final depende do teste no Android** (`docs/ROTEIRO-TESTE-ANDROID.md`). Etapas 4–7 **não autorizadas** |
+| Git | arquivos **não rastreados** (sem commit, por decisão): `.gitignore`, `.gitattributes`, `CLAUDE.md`, `docs/` (5 arquivos). Nada foi commitado |
+| Publicação | Repositório `victor1923hsm/rotavhs-go` criado (público, vazio). **Envio pendente: o app do Claude no GitHub não tem permissão de escrita nele** ("you need push access"). Versão testada com Q1/Q2/Q3/Q6, manifesto 119 arquivos (2026-11-20 02:06 UTC), commit inicial preparado localmente. Endereço: https://victor1923hsm.github.io/rotavhs-go/ |
+| Próximo passo | (1) liberar o repositório para o app do Claude (§7) ou enviar você mesmo o commit preparado; (2) teste no Android pelo roteiro; (3) aprovação final da Etapa 3 |
+| Figma | página nova **"RotaVHS Go · App"** no arquivo do Figma (as telas originais intocadas): variáveis Sol/Noite, componentes e as telas 01–05 e 07 editáveis. **Faltam** 06 Estatísticas, as versões Noite e o título: o limite de uso do Figma pela integração (assento Collab) foi atingido |
+
+**Projeto de origem:** `D:\Projetos Claude\RotaVHS`, pausado em 2026-11-18. Só leitura a partir daqui. Retomada dele: `D:\Projetos Claude\RotaVHS\docs\PAUSA-E-RETOMADA.md`.
+
+### Decisões (✅ todas aprovadas em 2026-11-19; detalhe em `docs/DECISOES.md`)
+| # | Assunto | Proposta em uma linha |
+|---|---|---|
+| G1 | Plataforma | PWA único agora; GPS por adaptador, com versão nativa futura em segundo plano (N1) |
+| G2 | Pilha | as versões já testadas no RotaVHS, fixas (`ARQUITETURA.md` §2) |
+| G3 | Reaproveitamento | copiar módulos testados do RotaVHS (só leitura); solver da 5.3 como experimental |
+| G4 | Distâncias | local e offline como padrão; pelas ruas só com conexão + autorização + consentimento por rota (N2) |
+| G5 | Mapa | pinos pelo Stop + linha **tracejada** "ordem, não é o caminho" enquanto a distância for estimada |
+| G6 | Mapa offline | OpenFreeMap; cache de 60 MB **sem garantia** de cobertura; lista como alternativa |
+| G7 | GPS | PWA com o app visível, filtros de precisão e de movimento; segundo plano só na N1 |
+| G8 | Recalcular | manual a qualquer momento + sugestões automáticas anti-oscilação; **nunca muda em silêncio** |
+| G9 | Visual | ✅ **o Figma é a referência** ([arquivo](https://www.figma.com/design/pR1JlzgthpKOSAzGm6f3sZ/Untitled)); o projeto se adapta a ele; Stop em destaque enorme |
+| G10 | Teste no celular | Etapa 1 pela rede local (HTTP); HTTPS decidido na Etapa 4 |
+| G11 | Dados do modelo | fictícios e realistas (~60 paradas) |
+| G12 | Destinatário + financeiro | ✅ sem nome, telefone e observação (a planilha não traz); sem aba Financeiro: o **custo estimado da rota** fica em Estatísticas |
+| G13 | Repositório | Git local; 1º commit só após aprovação |
+| G14 | Desempenho | JS inicial ≤ 150 KB, mapa só na Rota Ativa, RAM, bateria e dados baixos |
+| G15 | Ruas reais (exigência) | arquitetura pronta para mão única, retornos e restrições de circulação (N2) |
+
+## 2. Onde está cada coisa
+| Assunto | Fonte |
+|---|---|
+| Regras do projeto | `CLAUDE.md` |
+| Referência visual (Figma) | [arquivo do Figma](https://www.figma.com/design/pR1JlzgthpKOSAzGm6f3sZ/Untitled) (referência principal) · `docs/referencia-visual/` (2 quadros antigos) · [protótipo](https://www.figma.com/proto/pR1JlzgthpKOSAzGm6f3sZ/Untitled?node-id=4-2&page-id=0%3A1) |
+| Etapas, critérios, riscos, consumo | `docs/PLANO-GERAL.md` |
+| Pilha, camadas, dados, GPS, offline, roteamento, reaproveitamento | `docs/ARQUITETURA.md` |
+| Decisões | `docs/DECISOES.md` |
+
+## 3. Histórico
+| Data | O quê |
+|---|---|
+| 2026-11-19 | **Q1, Q2, Q3 e Q6 implementados**; proprietário do GitHub corrigido para victor1923hsm. Testes: Vitest 213/213; scripts 68/68; contraste 8/8; E2E principal 146/146; Etapa 3 36/36; Q 37/37 (normal) + 37/37 (/rotavhs-go/); Pages 48/48; localização 26/26; P3 36/36; JS inicial 137,2 KB. Publicação bloqueada só pela permissão de escrita no repositório |
+| 2026-11-19 | **Decisões Q1–Q6** registradas (`DECISOES.md`); Etapa 3 tecnicamente aceita, aprovação final após o teste no Android (roteiro criado). Verificação de publicação criada; comparação mostrou: código do app no PC = testado; **ícones do PC (novos) ≠ pasta de teste** → sincronizados e tudo retestado (Vitest 199/199; scripts 68/68; E2E 146/146; Etapa 3 36/36; Pages 48/48; localização 26/26). Pacote antigo de publicação descartado. Sem commit, sem deploy |
+| 2026-11-19 | **Etapa 3 concluída** (autorização das 20:50): situação por pacote (R1), gravação transacional e durável, retomada com "Continuar de onde parei", planos (SPX + 5), estado persistente dos alertas (A6/A7) e "silenciar", conferência guardada, **exclusão verificada dos detalhes ao finalizar** (regra definitiva), aviso antes de trocar a rota, tela "Alertas e dados", migração v1→v2. Testes: Vitest 199/199; E2E 146/146; Etapa 3 no navegador 36/36; Pages 48/48; localização 26/26; P3 36/36. **Sem commit** |
+| 2026-11-19 | **Requisitos R1–R5 aprovados** (entrega parcial, alertas de proximidade, agrupamento, GPS em tempo real, otimização dinâmica) e ajustes A6–A10 no planejamento. **Não** autoriza as Etapas 3–7. Revisão da Etapa 3 apresentada (§4) para decisão. Publicação mantida pronta, **sem publicar** até confirmar o acesso ao repositório |
+| 2026-11-19 | **P3 (autorização do usuário):** GPS contínuo com filtros e estados (funcional); OTIMIZAR MINHA ROTA a partir da posição, reavaliação após entrega e por desvio, entrega parcial e alerta de proximidade (demonstração); laboratório de GPS simulado. Testes: Vitest 183/183; E2E 145/145; Pages 48/48; localização 26/26; P3 36/36 |
+| 2026-11-19 | **P2 (autorização do usuário): "Minha localização" no mapa do protótipo** (ponto azul, círculo de precisão, direção, centralizar, avisos, GPS econômico). Testes: Vitest 168/168; E2E 145/145; protótipo no formato do Pages 48/48; localização 26/26 |
+| 2026-11-19 | **P1 (autorização do usuário): publicação do protótipo** no GitHub Pages (`victor1923hsm/rotavhs-go`), só dados fictícios, selo PROTÓTIPO DE TESTE. Envio pendente: o repositório ainda não está acessível ao Claude |
+| 2026-11-19 | **Etapa 3 implementada e testada** (relatório no §4): rota, marcações (eventos só de inclusão), fase, ordem e posição na lista guardadas no aparelho; retomada ao abrir; **Finalizar rota** gera o resumo (tela **Rotas finalizadas**, em Estatísticas); veículo guardado. Vitest 158/158; E2E 145/145 |
+| 2026-11-19 | Figma: telas do app recriadas como camadas editáveis na página "RotaVHS Go · App" (parcial: limite do assento Collab) |
+| 2026-11-19 | **Revisão 12 (definida pelo usuário):** transições fluidas estilo iOS (View Transitions, sem biblioteca, desligadas com "reduzir movimento") e menu inferior flutuante de vidro. Testes: Vitest 142/142; E2E 126/126; JS inicial 96,6 KB |
+| 2026-11-19 | **Revisão 11 (definida pelo usuário):** em Rotas, tocar na parada destaca no mapa e mostra Navegar (Google Maps / Waze); tocar no mapa abre a tela cheia (zoom, pinos tocáveis, cartão com Navegar e Abrir pedido). Navegar também na tela Pedidos. Testes: Vitest 139/139; E2E 126/126 (duas rodadas) |
+| 2026-11-19 | **Etapa 2 implementada e testada** (relatório no §4): importação da planilha da SPX no aparelho, Conferência com decisões e desfazer; módulos copiados do RotaVHS com os testes. Aguardando o teste e a aprovação do usuário |
+| 2026-11-19 | **Etapa 1 implementada e testada** (relatório no §4): PWA, 4 telas do Figma + Custo, temas Sol/Noite, mapa só na tela Rotas, busca pela parada, Recalcular + sugestão, mapa sem conexão → lista. Aguardando o teste e a aprovação do usuário |
+| 2026-11-19 | **Revisão 10 (definida pelo usuário):** na interface, "Parada" no lugar de "Stop" |
+| 2026-11-19 | **Revisão 9 (definida pelo usuário):** ao marcar Entregue / Sem sucesso, pula para a próxima parada pendente, com Desfazer por 6 s |
+| 2026-11-19 | **Revisão 8 (definida pelo usuário):** pinos do mapa com a mesma cor da caixa do Stop na tela Pedidos (cor fixa por Stop) |
+| 2026-11-19 | **Revisão 7: aprovação geral** de G1–G15; A5 resolvida (G5 tracejado "ordem, não é o caminho"; tamanhos do Figma; sem lucro); **Etapa 1 autorizada** |
+| 2026-11-19 | **Revisão 6 (definida pelo usuário):** aba Financeiro removida; o custo estimado fica em Estatísticas (cartão + tela Custo das entregas). Barra com 3 abas |
+| 2026-11-19 | **Revisão 5 (definida pelo usuário):** formato real da planilha SPX conferido (colunas em `CLAUDE.md`; sem nome, telefone e observação). Esses dados saem do app e da tela Pedidos. Prévia navegável publicada (modelo de teste, importa a planilha só no aparelho) |
+| 2026-11-19 | **Revisão 4 (definida pelo usuário):** o Figma é a referência e o projeto se adapta a ele (G9); sem as restrições de privacidade de nome e telefone (G12); o Stop continua sendo o mais importante; Financeiro = só o custo estimado da rota (combustível, preço do litro, consumo × km estimados). No Figma: telas traduzidas para pt-BR e criada a tela "Custo das entregas" |
+| 2026-11-19 | Revisão 3: G9 = cara do **protótipo do Figma** (capturas em `docs/referencia-visual/`); G12 = depois de finalizar, só **resumo operacional e financeiro** sem dados pessoais. Revisão detalhada de G1–G15 apresentada; **nada aprovado** |
+| 2026-11-19 | Conferência final de consistência (decisões × arquitetura × plano × `CLAUDE.md`): corrigidos 3 detalhes (referência antiga à quantidade de decisões no plano, ordem G14/G15, estimativa de JS × meta G14). RotaVHS original conferido intacto |
+| 2026-11-18 | Revisão 2: exigência **G15** (otimização futura pelas ruas reais: mão única, retornos, restrições de circulação). Nenhuma decisão aprovada |
+| 2026-11-18 | Revisão 1 do planejamento: GPS com caminho nativo (N1), distâncias pelas ruas preparadas (N2), recálculo manual + sugestões sem mudança silenciosa, aviso do mapa offline, desempenho (G14), dados temporários apagados ao finalizar |
+| 2026-11-18 | Projeto criado (repositório local + planejamento). RotaVHS original pausado e preservado (tags `pausa-2026-11-18-*`, backup em `D:\Projetos Claude\RotaVHS-backup\2026-11-18-pausa\`) |
+
+## 4. Relatório da Etapa 1 (resultados reais, 2026-11-19)
+Testes rodados no ambiente de nuvem do Claude (Linux, Node 22, Chromium headless do Playwright). **Não** foram rodados no seu Windows nem no Edge.
+
+| Teste | Resultado |
+|---|---|
+| `typecheck` (TS 7.0.2, strict) | ✅ sem erros |
+| Vitest (núcleo, dados fictícios, estado) | ✅ 21/21 |
+| Verificador de privacidade (copiado do RotaVHS) | ✅ 65/65 testes; 42 arquivos do projeto: OK |
+| Contraste, tema Sol (`npm run contraste`) | ✅ 8/8 pares ≥ 7:1 (texto 17,4:1; menta 11,1:1; cores das paradas 7,3–11,4:1) |
+| E2E clicando por todas as telas, 390×844 e 360×780, temas Sol e Noite | ✅ 95/95 verificações |
+| Offline depois da 1ª visita | ✅ abre Estatísticas e Rotas sem rede |
+| JS inicial (sem o mapa) | ✅ 93,4 KB gzip (meta ≤ 150 KB) |
+| Bloco do mapa (só na tela Rotas) | 293 KB gzip (estimativa do plano: 220–250 KB) |
+| Abertura em cache no PC (nuvem) | mediana 103 ms até a tela utilizável |
+| Heap JS | 2,8 MB em Pedidos; 5,4 MB em Rotas com o MapLibre carregado **sem tiles** |
+| Requisições de rede | só `tiles.openfreemap.org` |
+
+**Limitações desta rodada:**
+- Os tiles do OpenFreeMap são bloqueados no ambiente de nuvem: lá só foi testado o caminho "Mapa sem conexão" → "Ver lista". **O mapa com as ruas precisa ser conferido por você** no PC e no celular.
+- RAM com o mapa desenhado, bateria e abertura no S23 FE: não medidos (Etapas 8 e 9).
+- Corrigido durante os testes: o MapLibre 6 não achava o próprio worker depois do build (`setWorkerUrl` com o arquivo do worker).
+- Adaptações ao Figma (G9): no lugar da folha inferior e do trilho vertical do plano antigo, a parada atual fica na tela **Pedidos** (Stop enorme, Entregue/Sem sucesso) e o trilho é o de datas em Estatísticas.
+- Cores das paradas: azul, roxo e laranja do Figma foram clareadas (#7FA9F0, #B39CF0, #F49A4C) para o número preto passar de 7:1.
+- A importação de planilha nesta etapa é só o **arquivo de exemplo**; a leitura da planilha real da SPX é a Etapa 2.
+
+### Relatório da Etapa 2 (resultados reais, 2026-11-19)
+Copiados do RotaVHS (só leitura, G3), com a origem no cabeçalho de cada arquivo: `core/address/*`, `core/import/{build,csv,fields,mapping,review}`, `core/route/{labels,conference-list}`, `platform/spreadsheet.ts`, `scripts/gerar-planilhas.mjs` e as 10 planilhas **sintéticas** de `test-fixtures/planilhas/`. Novo no Go: `11-formato-spx.xlsx` (colunas exatas da SPX, dados fictícios), `features/importar/*` (Worker de leitura, conversão para as paradas do app) e a tela de Conferência.
+
+| Teste | Resultado |
+|---|---|
+| Testes copiados do RotaVHS (importação, endereço, conferência, Stop/Sequence) | ✅ passaram sem mudança |
+| Formato da SPX (colunas reconhecidas sozinhas, Stop "-" → "?", Stop dividido, contabilidade, 200 pacotes < 0,5 s) | ✅ 8/8 |
+| Conversão para o app (nada some/duplica, "são o mesmo local", remover linha repetida, sem coordenada) | ✅ 8/8 |
+| Total Vitest | ✅ 135/135 · verificador de privacidade 65/65 · 78 arquivos OK |
+| E2E (Etapa 1 + importação, Chromium na nuvem) | ✅ 113/113 |
+| JS inicial | ✅ 98,8 KB gzip; leitor de planilha sob demanda (Worker 23 KB) |
+
+**Sua planilha real** (lida só no ambiente do Claude, nunca gravada no projeto; só contagens): 120 linhas = 120 pacotes + 0 ignoradas; 9 colunas reconhecidas sozinhas; 2 pacotes sem número de parada ("?"); **101 paradas** pela regra do RotaVHS (16 números de Stop em 41 partes, endereços escritos de jeitos diferentes) → **76 paradas** com "Juntar as partes de cada parada dividida"; 10 casos de "mesmo endereço com números diferentes" para você decidir; leitura em 55 ms (Node) e 175 ms até a Conferência (navegador).
+
+**Limitações:** a rota importada ficava **só na memória** (resolvido na Etapa 3). O início da otimização com planilha real é a 1ª parada da SPX (sem GPS até a Etapa 4). O mapa com tiles continua não verificado no ambiente de nuvem.
+
+### Relatório da Etapa 3 (resultados reais, 2026-11-19)
+Novo: `platform/armazenamento/` (interface `Armazenamento` + implementação **Dexie** + implementação **na memória** para navegador sem IndexedDB), `core/resumo.ts`, `app/persistencia.ts` (observa o estado e grava só o que mudou, numa fila), tela `RotasFinalizadas.tsx`. Schema v1 de `ARQUITETURA.md` §4 (banco `rotavhsgo`).
+
+| Teste | Resultado |
+|---|---|
+| Armazenamento (Dexie com fake-indexeddb e memória, o mesmo contrato): guardar/retomar, eventos só de inclusão, finalizar, apagar rota e resumo, veículo | ✅ 13/13 |
+| Sessão recuperável com o estado do app (fechar e reabrir mantém fase, ordem, marcações, posição; finalizar; rota substituída) | ✅ 3/3 |
+| Total Vitest | ✅ 158/158 · verificador de privacidade 65/65 · typecheck ok |
+| E2E (Chromium na nuvem): recarregar a página e fechar/abrir a aba mantêm a rota, as marcações e a parada atual; planilha importada (fictícia e a sua) continua depois de reabrir; Finalizar → resumo; resumo continua ao reabrir; apagar com Desfazer | ✅ 145/145 (19 novas) |
+| Tamanho guardado | rota de 60 paradas < 1 MB (teste); IndexedDB do navegador com tudo: 232 KB |
+| JS inicial | ✅ 130,3 KB gzip (era 96,6; o Dexie soma ~33 KB) — meta ≤ 150 KB |
+
+**Como funciona:** cada toque em Entregue / Sem sucesso / Desfazer vira um **evento** (só inclusão: marcar, desfazer, correção); ao abrir, o status é refeito a partir deles. Fase, ordem, parada selecionada e hora de "Iniciar entregas" são gravadas a cada mudança. **Finalizar rota** (Rotas, em andamento, com confirmação que mostra as pendentes) guarda o resumo (contagens, pacotes, duração real, km estimados, litros, custo em centavos, sem endereços nem códigos), apaga a matriz de distâncias da rota e volta para a rota de exemplo. Importar outra planilha com a rota marcada pela metade guarda a anterior como **"Substituída"** (nada se perde); sem marcações, ela é descartada. O pedido de armazenamento persistente (`navigator.storage.persist()`) é feito na 1ª marcação ou planilha importada.
+
+**Adaptações fora do Figma** (mínimas, no estilo das telas existentes): botão **Finalizar rota** com confirmação em Rotas; atalho **"Rotas finalizadas · N"** abaixo do cartão de custo em Estatísticas (só aparece com resumo guardado); tela **Rotas finalizadas** no formato da tela Custo. O botão "Salvar custos" agora avisa "Custos guardados neste aparelho" (o veículo já é guardado a cada mudança).
+
+**Correção feita pelos testes:** o índice dos eventos usava o nome de campo errado e as marcações não voltavam ao reabrir; corrigido antes da entrega.
+
+**Limitações:** o pedido de armazenamento persistente é recusado no Chromium da nuvem (sem interação de usuário real); no celular, o navegador decide (no Android costuma aceitar para app instalado; iOS só testável na Etapa 8). O tema continua no `localStorage` (precisa ser lido antes de desenhar a tela). Não testado no seu Windows/Edge nem no celular.
+
+### Relatório P1 + P2 (protótipo publicado e "Minha localização", 2026-11-19)
+| Teste | Resultado |
+|---|---|
+| typecheck + Vitest | ✅ 168/168 (10 novos: GPS simulado, bateria, permissão, sem sinal, rota intacta, privacidade do código) |
+| Verificador de privacidade · contraste | ✅ 65/65 · 8/8 ≥ 7:1 |
+| Varredura de dados reais (332 trechos da planilha real) no projeto e nas planilhas de teste | ✅ 0 encontrados |
+| E2E completo (versão do PC) | ✅ 145/145 |
+| Protótipo no formato do GitHub Pages (`/rotavhs-go/`, 404.html), 5 telas em Galaxy S23 FE (360×780), iPhone 13 e Pixel 7 emulados | ✅ 48/48 |
+| Localização com GPS emulado: ponto, centralizar, acompanhar, arrastar, imprecisa, direção, negada, indisponível, desligar, nada gravado/enviado/no console | ✅ 26/26 |
+| JS inicial | ✅ 130,6 KB gzip; a localização fica no bloco do mapa (288,6 KB, só em Rotas) |
+
+**Limitações:** testes em Chromium na nuvem com GPS **emulado**; o GPS de verdade, a bateria e o iPhone só no aparelho. O `.github/workflows/publicar.yml` não pôde ser gravado na pasta do PC (arquivo protegido para gravação remota): ele vai direto para o GitHub.
+
+### Relatório P3 (GPS dinâmico, otimização dinâmica em demonstração, entrega parcial, 2026-11-19)
+Funcional × demonstração: tabela em `docs/DECISOES.md`, P3.
+
+| Teste | Resultado |
+|---|---|
+| typecheck + Vitest | ✅ 183/183 (15 novos: filtros de salto e precisão, estados, origem confiável, otimizar pela posição/longe da rota, agrupamentos intactos, ordem nunca muda sozinha, tremor de 10 min sem sugestão, desvio só após 2 min, intervalo de 60 s, próxima protegida, proximidade, entrega parcial guardada e desfeita) |
+| Verificador de privacidade · contraste · varredura de dados reais | ✅ 65/65 · 8/8 · 0 de 332 trechos |
+| E2E completo (versão do PC) | ✅ 145/145 |
+| 5 telas + selo no formato do GitHub Pages (3 celulares emulados) | ✅ 48/48 |
+| Localização (GPS do navegador emulado; nada gravado/enviado/no console) | ✅ 26/26 |
+| P3 no navegador: GPS simulado, salto, impreciso, proximidade, desvio, sem sinal (30 s), GPS desligado, entrega parcial (e reabrir), visitas × pacotes, GPS perto/longe da rota | ✅ 36/36 |
+| JS inicial | ✅ 136,7 KB gzip (meta ≤ 150 KB) |
+
+**Limitações:** tudo testado com GPS **emulado/simulado** no Chromium da nuvem; GPS real, bateria e iPhone só no aparelho. Os limites (300 m, 2 min, 5 %, 80 m) são os do plano e devem ser ajustados com o seu uso real (Etapa 6). A sugestão por desvio só aparece quando a nova ordem é melhor pelo modelo; senão o laboratório mostra "a ordem atual continua a melhor".
+
+### Revisão da Etapa 3 (para decisão, 2026-11-19 20:25)
+**Objetivo:** guardar a rota no aparelho e retomá-la; preparar os dados para R1–R5. Plano completo em `PLANO-GERAL.md`, Etapa 3.
+
+| O quê | Situação |
+|---|---|
+| Rota, paradas, pacotes, eventos só de inclusão, resumos, veículo; retomada; finalizar; rota substituída; `storage.persist()` | ✅ feito e testado (Vitest + E2E 145/145) |
+| Pacote **pendente** dentro da visita parcial (R1/A10) | ❌ falta (hoje: todos os pacotes precisam de entregue/sem sucesso) |
+| Estado dos alertas por rota e "silenciar" (A6/A7), sem posição | ❌ falta (hoje: "já avisada" só na memória; reabrir o app repete o alerta) |
+| Retenção depois de finalizar | ⚠️ decisão sua (D-Ret): hoje paradas, endereços, códigos e coordenadas da rota finalizada **ficam** no aparelho |
+| Planos (5 recentes + SPX), Conferência em andamento, migração de schema, cota/erros | ❌ falta |
+
+**Dependências:** Etapa 4 (GPS) não grava posição — só usa as preferências de `settings`; Etapas 5/6 usam os planos e a matriz `distanceCache` (apagada ao finalizar); Etapa 7 usa os eventos por pacote (R1) e o estado dos alertas (A6/A7); Etapa 8 testa o risco de o iOS apagar os dados.
+
+**Riscos de privacidade:** (1) endereços, códigos SPX e coordenadas das entregas ficam no IndexedDB sem criptografia: quem usar o aparelho desbloqueado e o mesmo navegador consegue vê-los; (2) sem retenção, rotas finalizadas acumulam; (3) o resumo não tem endereços nem códigos (já é assim); (4) nenhuma posição do GPS é gravada (já é assim, testado). **Desempenho:** ~230 KB por rota; sem retenção, ~100 rotas ≈ 20 MB; abertura espera o banco até 2,5 s antes de desenhar (não medido no celular); +33 KB de JS (Dexie) já dentro da meta.
+
+**Decisões suas para autorizar a Etapa 3 (versão 3b):** (a) aprovar o que já está feito; (b) autorizar a parte que falta (itens 1–6 do plano); (c) D-Ret: apagar os dados da rota ao finalizar / após N dias / manter.
+
+### Relatório final da Etapa 3 (resultados reais, 2026-11-19 · conclusão)
+**Ambiente:** Linux na nuvem, Node 22, Chromium headless do Playwright com IndexedDB real; Vitest com fake-indexeddb. **Não** testado no seu Windows/Edge nem no celular.
+
+**Arquivos novos:** `src/core/pacotes.ts`, `src/core/alertas.ts`, `src/mock/rota-grande.ts`, `src/components/domain/Retomada.tsx`, `src/components/domain/Planos.tsx`, `src/screens/Preferencias.tsx`, `src/app/etapa3.test.ts`. **Alterados:** `src/core/resumo.ts`, `src/platform/armazenamento/{tipos,dexie,memoria}.ts` + teste, `src/app/{estado,persistencia,dinamica,App}.ts(x)` + `persistencia.test.ts`/`dinamica.test.ts`, `src/app/navegacao.tsx`, `src/app/simulador.ts`, `src/platform/localizacao/{tipos,web}.ts`, `src/components/domain/Gps.tsx`, `src/screens/{Pedidos,Rotas,Importar,Estatisticas,RotasFinalizadas}.tsx`, `src/styles/app.css`. Nenhuma dependência nova.
+
+| Teste | Resultado |
+|---|---|
+| typecheck + Vitest | ✅ 199/199 (novos: contrato v2 nas duas implementações, histórico por pacote, transação tudo-ou-nada, limpeza interrompida e retomada, rota corrompida, armazenamento cheio, migração v1→v2, resumo validado; app: parcial por pacote, retomada, interrupção logo após marcar, correção, reinício na finalização, falha + nova tentativa, dados inconsistentes, conferência, alertas, planos, 200 paradas) |
+| Verificador de privacidade · contraste · varredura de dados reais | ✅ 65/65 · 8/8 ≥ 7:1 · 0 de 332 trechos da planilha real em 133 arquivos |
+| E2E Etapa 3 no Chromium (IndexedDB real) | ✅ 36/36: "2 de 3 entregues · 1 pendente"; reabrir com "Continuar de onde parei"; correção com histórico; navegador **derrubado** (CDP `Page.crash`) logo após a gravação confirmada; conferência interrompida volta; aviso antes de trocar a rota; 200 paradas; planos; finalizar → banco sem endereços nem códigos; alerta → silenciar (GPS continua); **retomar sem internet** |
+| E2E completo (PC) · Pages (3 celulares emulados) · localização · P3 | ✅ 146/146 · 48/48 · 26/26 · 36/36 |
+
+**Medições (rota fictícia de 200 paradas, 499–505 pacotes):**
+| Medida | Chromium (nuvem, PC) | Node + fake-indexeddb |
+|---|---|---|
+| Abrir e recuperar a rota (até a tela) | mediana 192 ms | 49 ms (só o banco) |
+| Salvar uma entrega (toque → confirmado no banco) | 72 ms | 41 ms |
+| Atualizar uma visita parcial (1 pacote) | 45 ms | 1 ms |
+| Gravar a troca de rota (encerrar a anterior + 200 paradas) | 235 ms | 59 ms (salvar rota) |
+| Finalizar e limpar | 202 ms | 23 ms |
+| Tamanho | IndexedDB 652 KB (estimativa do navegador) | 148 KB de dados |
+| Memória (heap JS em Pedidos) | 5,1 MB | — |
+| JS inicial | 143,0 KB gzip (meta ≤ 150 KB) | — |
+
+**Limitações:** (1) falta de bateria/reinício **real** não testada: simulados por transação abortada, conexão fechada, nova abertura e renderer derrubado; um corte **antes** da confirmação do navegador (≈ 7–8 ms medidos) pode perder o último toque; (2) se os dados do navegador forem apagados, ou o iOS os remover, a rota não volta; (3) a exclusão remove os registros do app, sem garantia de eliminação física no disco; (4) "Marcar uma entrega" inclui o cálculo da sugestão automática da demonstração P3 (2-opt), que no celular pode levar mais; (5) folga de 7 KB no JS inicial; (6) o cache de imagens do mapa não é apagado ao finalizar; há o botão "Limpar mapas guardados" em Alertas e dados (Q3).
+
+## 4b. Validação no celular (pendente)
+Roteiro: `docs/ROTEIRO-TESTE-ANDROID.md` (12 cenários). O cenário "sem internet" só funciona em HTTPS (depois da publicação ou com HTTPS local na Etapa 4).
+
+## 5. Pendências
+| # | Pendência | Quando |
+|---|---|---|
+| A4 | Versão nativa para iOS exige Mac + conta de desenvolvedor (paga) para instalação duradoura: decidir antes de planejar a N1 | antes da N1 |
+| A2 | Ter um iPhone disponível para testar o iOS (sem ele, o iOS fica "não verificado") | antes da Etapa 8 |
+| A3 | HTTPS local para instalar o PWA e usar o GPS no celular (G10) | Etapa 4 |
+
+## 6. Como executar
+**Para retomar numa sessão nova** (primeira mensagem sugerida):
+> "Leia `D:\Projetos Claude\RotaVHS-Go\CLAUDE.md`, `docs/CONTINUAR-PROJETO.md` e `docs/DECISOES.md`. A Etapa 3 está pronta; vamos revisar o meu teste e decidir a Etapa 4."
+
+Regras desta retomada: G1–G15 aprovadas; a Etapa 4 só começa com a sua autorização; o RotaVHS original continua só para leitura.
+
+Na pasta `D:\Projetos Claude\RotaVHS-Go`, no PowerShell:
+1. `npm install` (só dentro do projeto; ~270 MB em `node_modules`).
+2. `npm test` (typecheck + Vitest + verificador de privacidade) e `npm run contraste`.
+3. `npm run build` e depois `npm run tamanho`.
+4. `npm run preview` → abra `http://localhost:4173` no PC. No celular (mesmo Wi-Fi): `http://<IP do PC>:4173` (o terminal mostra o endereço "Network"). Simular mapa sem conexão: acrescente `?mapa=off` ao endereço.
+5. Desligue o servidor com **Ctrl + C** ao terminar.
+6. Testar a importação: **Pedidos → Importar rotas → Escolher planilha da SPX** (a planilha não vai para o Git: `.gitignore` bloqueia `*.xlsx` fora de `test-fixtures/`).
+   Testar a Etapa 3: em Pedidos, abra uma parada com 2+ pacotes → **Marcar pacote a pacote** (ex.: "2 de 3 entregues · 1 pendente"); **feche o navegador** (ou desligue o celular) e abra de novo → **Continuar de onde parei**; corrija um pacote; em Rotas, **Planos guardados**; **Finalizar rota** → Estatísticas → Rotas finalizadas ("detalhes apagados do aparelho"); **Estatísticas → Alertas e dados** (alertas, rotas guardadas, conferência). Os dados ficam no navegador usado (Edge do PC e Chrome do celular são separados).
+7. 1º commit (G13): `npm run ativar-gancho`, depois `git add -A` e `git commit -m "Planejamento + Etapa 1"`.
+
+## 7. Publicar a versão correta no GitHub Pages (só com autorização)
+**Situação (2026-11-19 23h):** repositório `victor1923hsm/rotavhs-go` existe (público, vazio), mas o app do Claude **não tem permissão de escrita** nele. Commit inicial preparado com a versão testada (Etapa 3 + Q1/Q2/Q3/Q6). Nada foi enviado.
+
+**Para liberar o envio pelo Claude:** github.com → Settings → Applications → *Installed GitHub Apps* → **Claude** → Configure → *Repository access* → incluir `rotavhs-go` (permissão de conteúdo de leitura e escrita) → Save. No repositório: Settings → Pages → Source = **GitHub Actions**.
+
+**Pré-condições:** (a) repositório `victor1923hsm/rotavhs-go` criado (público, vazio), Pages com Source = GitHub Actions, e liberado para o app do Claude; (b) sua autorização explícita para o commit e a publicação.
+
+**Procedimento:**
+1. Na versão testada: `npm run manifesto` → roda **todos** os testes e só então grava `publicacao.manifesto.json` (impressão SHA-256 de cada arquivo que entra no build: `src`, `public`, `scripts`, `test-fixtures`, workflow e configurações).
+2. Montar a pasta de publicação a partir dessa versão (sem `node_modules`, `dist`, planilhas reais, `.env`, `docs/referencia-visual`) e conferir: `npm run conferir-publicacao` → precisa dizer **"idêntico"**. Também `node scripts/verificar-publicacao.mjs comparar <pasta-testada> <pasta-de-publicação>`.
+3. Varredura de privacidade: verificador do projeto + busca de trechos da planilha real (0 esperado).
+4. Commit + push (**só com autorização**). No GitHub, o workflow: confere o manifesto (para se algo diferir) → `npm ci` → `npm test` → build do protótipo (`/rotavhs-go/`, dados fictícios) → tamanho → publica.
+5. Depois: abrir https://victor1923hsm.github.io/rotavhs-go/ e repetir o teste das 5 telas no celular; registrar aqui.
+
+**Observação:** o arquivo `.github/workflows/publicar.yml` não pôde ser gravado na sua pasta pelo Claude (pasta protegida para gravação remota); ele está na versão testada e entra no manifesto. Se preferir publicar a partir do seu PC, crie esse arquivo manualmente com o conteúdo da versão testada.

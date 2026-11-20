@@ -1,0 +1,23 @@
+#!/bin/sh
+# Gancho de privacidade do RotaVHS (Etapa 4.11).
+# Verifica o conteúdo PREPARADO para o commit (índice do Git, não o disco) e bloqueia o commit
+# se encontrar telefone, CPF/CNPJ, e-mail pessoal, nome de destinatário, credencial, planilha real,
+# .env, chave ou binário não verificável. A saída mostra só arquivo, linha, categoria e quantidade.
+#
+# Ativado só neste repositório com:  git config core.hooksPath .githooks
+# Falha fechada: se o Node ou o verificador não rodarem, o commit é bloqueado.
+# Falso positivo revisado: "privacidade:permitir" na linha (texto) ou SHA-256 em
+# scripts/privacidade/excecoes.json (binário). Nunca usar "git commit --no-verify".
+
+cd "$(git rev-parse --show-toplevel)" || exit 1
+if ! command -v node >/dev/null 2>&1; then
+  echo "privacidade: Node.js não encontrado; commit bloqueado (o verificador precisa do Node)." >&2
+  exit 1
+fi
+node scripts/privacidade/verificar.mjs --staged
+status=$?
+if [ "$status" -ne 0 ]; then
+  echo "privacidade: commit BLOQUEADO pelo gancho (código $status)." >&2
+  exit 1
+fi
+exit 0

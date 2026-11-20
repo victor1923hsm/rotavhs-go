@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="pt-BR" data-theme="sol">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#171B19" />
+    <meta name="description" content="RotaVHS Go — rotas de entrega: importar, conferir, rodar e marcar." />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <title>RotaVHS Go</title>
+    <script>
+      // Aplica o tema salvo antes do primeiro desenho (evita piscar). Padrão: Sol.
+      try {
+        var t = localStorage.getItem('rotavhsgo.tema')
+        document.documentElement.setAttribute('data-theme', t === 'noite' ? 'noite' : 'sol')
+      } catch (e) {}
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <noscript>O RotaVHS Go precisa de JavaScript.</noscript>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

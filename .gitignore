@@ -1,0 +1,22 @@
+# dependências e builds
+node_modules/
+dist/
+dev-dist/
+*.tsbuildinfo
+
+# dados privados: planilhas reais NUNCA entram no Git
+samples/
+*.xlsx
+*.xls
+*.csv
+!test-fixtures/**/*.xlsx
+!test-fixtures/**/*.csv
+
+# segredos e locais
+.env
+.env.*
+!.env.example
+backups/
+e2e-saida/
+.DS_Store
+Thumbs.db

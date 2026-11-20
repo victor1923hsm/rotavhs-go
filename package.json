@@ -1,0 +1,45 @@
+{
+  "name": "rotavhs-go",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "RotaVHS Go — PWA para o entregador (Etapa 3: rota guardada no aparelho)",
+  "engines": {
+    "node": ">=22.22"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.app.json --noEmit && vite build",
+    "preview": "vite preview --host",
+    "typecheck": "tsc -p tsconfig.app.json --noEmit",
+    "test": "npm run typecheck && vitest run && node --test scripts/privacidade/verificar.test.mjs scripts/verificar-publicacao.test.mjs",
+    "contraste": "node scripts/contraste.mjs",
+    "tamanho": "node scripts/tamanho-js.mjs",
+    "privacidade": "node scripts/privacidade/verificar.mjs --all",
+    "ativar-gancho": "git config core.hooksPath .githooks",
+    "planilhas": "node scripts/gerar-planilhas.mjs",
+    "manifesto": "npm test && node scripts/verificar-publicacao.mjs gerar",
+    "conferir-publicacao": "node scripts/verificar-publicacao.mjs conferir"
+  },
+  "dependencies": {
+    "dexie": "4.4.7",
+    "lucide-react": "1.73.0",
+    "maplibre-gl": "6.18.0",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
+    "react-router": "8.5.1",
+    "read-excel-file": "9.3.14",
+    "zustand": "5.1.0"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "4.3.5",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "@vitejs/plugin-react": "6.3.0",
+    "fake-indexeddb": "6.2.8",
+    "tailwindcss": "4.3.5",
+    "typescript": "7.0.2",
+    "vite": "8.3.8",
+    "vite-plugin-pwa": "2.0.0",
+    "vitest": "5.1.0"
+  }
+}
