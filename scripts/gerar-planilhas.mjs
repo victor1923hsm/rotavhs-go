@@ -190,10 +190,61 @@ const cenarios = {
   ],
 }
 
+// ── RotaVHS Go (importação real, 2026-11-20): cenários do formato SPX, todos FICTÍCIOS ──
+const SPX = ['AT ID', 'Sequence', 'Stop', 'SPX TN', 'Destination Address', 'Bairro', 'City', 'Zipcode/Postal code', 'Latitude', 'Longitude']
+const tn = (n) => `BR26${String(n).padStart(9, '0')}X`
+// Problemas: pacote repetido, mesmo endereço (agrupa), mesma coordenada com endereços diferentes, aptos/blocos,
+// coordenada inválida e fora da região, Stop "-", linha sem código, linha sem endereço, linha vazia.
+cenarios['12-spx-problemas'] = [
+  {
+    name: 'Sheet1',
+    rows: [
+      SPX,
+      ['AT0000TESTE', 1, 1, tn(201), 'Rua Teste 20, 100', 'Bairro Ficticio', 'Cidade Teste', '70000-020', -15.8101, -47.9101],
+      ['AT0000TESTE', 2, 1, tn(202), 'Rua Teste 20, 100', 'Bairro Ficticio', 'Cidade Teste', '70000-020', -15.8101, -47.9101],
+      ['AT0000TESTE', 3, 1, tn(202), 'Rua Teste 20, 100', 'Bairro Ficticio', 'Cidade Teste', '70000-020', -15.8101, -47.9101],
+      ['AT0000TESTE', 4, 2, tn(203), 'Rua Teste 21, 50, Apto 101', 'Bairro Ficticio', 'Cidade Teste', '70000-021', -15.8110, -47.9110],
+      ['AT0000TESTE', 5, 2, tn(204), 'Rua Teste 21, 50, Apto 102', 'Bairro Ficticio', 'Cidade Teste', '70000-021', -15.8110, -47.9110],
+      ['AT0000TESTE', 6, 3, tn(205), 'Rua Teste 22, 10, Bloco A', 'Bairro Ficticio', 'Cidade Teste', '70000-022', -15.8120, -47.9120],
+      ['AT0000TESTE', 7, 4, tn(206), 'Rua Teste 23, 77', 'Bairro Ficticio', 'Cidade Teste', '70000-023', -15.8120, -47.9120],
+      ['AT0000TESTE', 8, 5, tn(207), 'Rua Teste 24, 5', 'Bairro Ficticio', 'Cidade Teste', '70000-024', 'abc', 'xyz'],
+      ['AT0000TESTE', 9, 6, tn(208), 'Rua Teste 25, 9', 'Bairro Ficticio', 'Cidade Teste', '70000-025', -47.9130, -15.8130],
+      ['AT0000TESTE', 10, 7, tn(209), 'Rua Teste 26, 1', 'Bairro Ficticio', 'Cidade Teste', '70000-026', '', ''],
+      ['AT0000TESTE', '-', '-', tn(210), 'Rua Teste 27, 270', 'Bairro Ficticio', 'Cidade Teste', '70000-027', -15.8140, -47.9140],
+      ['AT0000TESTE', 12, 8, '', 'Rua Teste 28, 280', 'Bairro Ficticio', 'Cidade Teste', '70000-028', -15.8150, -47.9150],
+      ['AT0000TESTE', 13, 9, tn(212), '', 'Bairro Ficticio', 'Cidade Teste', '', -15.8160, -47.9160],
+      [],
+      ['AT0000TESTE', 14, 10, tn(213), 'Rua Teste 29, 290', 'Bairro Ficticio', 'Cidade Teste', '70000-029', -15.8170, -47.9170],
+    ],
+  },
+]
+// Rota grande: 250 paradas, 1 a 3 pacotes cada, numa grade de ~6 km (coordenadas fictícias).
+{
+  const rows = [SPX]
+  let n = 1000
+  let seq = 1
+  for (let stop = 1; stop <= 250; stop++) {
+    const q = 1 + (stop % 3)
+    const lat = -15.80 - Math.floor((stop - 1) / 16) * 0.0035
+    const lng = -47.90 - ((stop - 1) % 16) * 0.0035
+    for (let k = 0; k < q; k++)
+      rows.push(['AT0000TESTE', seq++, stop, tn(++n), `Rua Teste ${100 + stop}, ${stop * 3}`, `Bairro Ficticio ${1 + (stop % 9)}`, 'Cidade Teste', '70000-100', Number(lat.toFixed(5)), Number(lng.toFixed(5))])
+  }
+  cenarios['13-spx-250-paradas'] = [{ name: 'Sheet1', rows }]
+}
+// Sem a coluna de endereço: deve dizer qual coluna faltou.
+cenarios['15-spx-sem-endereco'] = [{ name: 'Sheet1', rows: [['AT ID', 'Sequence', 'Stop', 'SPX TN', 'Bairro', 'City'], ['AT0000TESTE', 1, 1, tn(301), 'Bairro Ficticio', 'Cidade Teste']] }]
+
 for (const [nome, sheets] of Object.entries(cenarios)) writeFileSync(new URL(`${nome}.xlsx`, OUT), xlsx(sheets))
 
 // CSV (separador ; e acentos), como o Excel brasileiro exporta
 const csv = padrao.map((r) => r.map((v) => (/[;"\n]/.test(String(v)) ? `"${String(v).replace(/"/g, '""')}"` : v)).join(';')).join('\r\n')
 writeFileSync(new URL('10-padrao.csv', OUT), '﻿' + csv, 'utf8')
 
-console.log(`planilhas sintéticas: ${Object.keys(cenarios).length} .xlsx + 1 .csv em test-fixtures/planilhas/`)
+// O formato SPX também em CSV (vírgula, como exporta o navegador), com acentos.
+const spxCsv = cenarios['11-formato-spx'][0].rows
+  .map((r) => r.map((v) => (/[,"\n]/.test(String(v)) ? `"${String(v).replace(/"/g, '""')}"` : v)).join(','))
+  .join('\r\n')
+writeFileSync(new URL('14-formato-spx.csv', OUT), spxCsv.replace('Bairro Ficticio', 'Bairro Fictício'), 'utf8')
+
+console.log(`planilhas sintéticas: ${Object.keys(cenarios).length} .xlsx + 2 .csv em test-fixtures/planilhas/`)

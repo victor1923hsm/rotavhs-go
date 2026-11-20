@@ -17,6 +17,7 @@ export function Estatisticas() {
       : `Você concluiu ${feitas} ${feitas === 1 ? 'parada' : 'paradas'} hoje${falhas ? ` (${falhas} sem sucesso)` : ''}. Acompanhe seu desempenho e veja como a otimização de rotas melhora sua eficiência.`
   return (
     <div className="est">
+      <div className="est-folha">
       <div className="est-painel" />
       <div className="est-trilho">
         <button className="icone-botao" style={{ background: 'transparent', color: 'var(--sobre-tinta-claro)', marginBottom: 6 }} aria-label={tema === 'sol' ? 'Usar tema Noite' : 'Usar tema Sol'} onClick={alternarTema}>
@@ -57,6 +58,7 @@ export function Estatisticas() {
           <div className="rotulo" style={{ color: 'inherit', opacity: 0.7 }}>Distância total est.</div>
           <div style={{ fontSize: 19 }}>{numero(r.km)} km</div>
         </div>
+      </div>
       </div>
     </div>
   )

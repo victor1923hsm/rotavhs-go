@@ -27,6 +27,9 @@ export class SpreadsheetError extends Error {
   }
 }
 
+/** Uma rota da SPX tem poucas centenas de linhas (≈ 50 KB); acima disso não é planilha de rota. */
+const LIMITE_BYTES = 15 * 1024 * 1024
+
 export async function sha256Hex(data: ArrayBuffer): Promise<string> {
   const h = await crypto.subtle.digest('SHA-256', data)
   return [...new Uint8Array(h)].map((b) => b.toString(16).padStart(2, '0')).join('')
@@ -42,11 +45,15 @@ export async function readSpreadsheet(data: ArrayBuffer, fileName: string): Prom
   const lower = fileName.toLowerCase()
   if (data.byteLength === 0) throw new SpreadsheetError('vazio', 'O arquivo está vazio.')
   const sha256 = await sha256Hex(data)
+  if (data.byteLength > LIMITE_BYTES) throw new SpreadsheetError('formato', 'Arquivo grande demais para uma rota (mais de 15 MB).')
   if (lower.endsWith('.csv')) {
     return { sheets: [{ name: fileName, rows: parseCsv(decodeText(data)) }], sha256, format: 'csv' }
   }
-  if (lower.endsWith('.xls')) throw new SpreadsheetError('xls_antigo', 'Arquivo .xls antigo: abra no Excel e salve como .xlsx.')
-  if (!lower.endsWith('.xlsx')) throw new SpreadsheetError('formato', 'Formato não aceito. Use .xlsx ou .csv.')
+  if (lower.endsWith('.xls')) throw new SpreadsheetError('xls_antigo', 'Arquivo .xls (formato antigo do Excel) não é lido com segurança aqui. Exporte da SPX em .xlsx ou .csv, ou abra no Excel/Planilhas e salve como .xlsx.')
+  if (!lower.endsWith('.xlsx')) throw new SpreadsheetError('formato', 'Formato não aceito. Use a planilha da SPX em .xlsx ou .csv.')
+  // .xlsx é um ZIP: começa com "PK". Evita tentar ler outro arquivo renomeado.
+  const ini = new Uint8Array(data, 0, Math.min(2, data.byteLength))
+  if (ini[0] !== 0x50 || ini[1] !== 0x4b) throw new SpreadsheetError('corrompido', 'O arquivo tem extensão .xlsx, mas não é uma planilha do Excel válida.')
   try {
     const { default: readXlsxFile } = await import('read-excel-file/universal')
     const sheets = await readXlsxFile(data)

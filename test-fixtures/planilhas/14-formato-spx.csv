@@ -1,0 +1,12 @@
+AT ID,Sequence,Stop,SPX TN,Destination Address,Bairro,City,Zipcode/Postal code,Latitude,Longitude
+AT0000TESTE,1,1,BR260000000101X,"Rua Teste 1, 10",Bairro Fictício,Cidade Teste,70000-001,-15.80012,-47.90034
+AT0000TESTE,2,1,BR260000000102X,"Rua Teste 1, 10",Bairro Ficticio,Cidade Teste,70000-001,-15.80012,-47.90034
+AT0000TESTE,3,2,BR260000000103X,"Rua Teste 2, 25, Lote 4",Bairro Ficticio,Cidade Teste,70000-002,-15.80105,-47.90112
+AT0000TESTE,4,3,BR260000000104X,"Rua Teste 3, 7",Bairro Ficticio,Cidade Teste,70000-003,-15.8021,-47.90201
+AT0000TESTE,5,3,BR260000000105X,"Rua Teste 9, 300",Bairro Ficticio,Cidade Teste,70000-009,-15.8039,-47.9002
+AT0000TESTE,6,4,BR260000000106X,"Rua Teste 4, S/N, Quadra 2 Lote 8",Bairro Ficticio,Cidade Teste,70000-004,-15.80301,-47.90305
+AT0000TESTE,7,4,BR260000000107X,"Rua Teste 4, S/N, Quadra 2 Lote 8",Bairro Ficticio,Cidade Teste,70000-004,-15.80301,-47.90305
+AT0000TESTE,8,4,BR260000000108X,"Rua Teste 4, S/N, Quadra 2 Lote 8",Bairro Ficticio,Cidade Teste,70000-004,-15.80301,-47.90305
+AT0000TESTE,9,5,BR260000000109X,"Rua Teste 5, 51",bairro ficticio,Cidade Teste,70000-005,-15.80402,-47.9041
+AT0000TESTE,-,-,BR260000000110X,"Rua Teste 6, 60",Bairro Ficticio,Cidade Teste,70000-006,-15.805,-47.905
+AT0000TESTE,-,-,BR260000000111X,"Rua Teste 7, 70",Bairro Ficticio,Cidade Teste,70000-007,-15.799,-47.899

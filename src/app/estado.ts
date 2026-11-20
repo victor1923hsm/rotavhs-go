@@ -119,6 +119,8 @@ interface Estado {
   gravacao: 'ok' | 'falhou'
   /** Rotas finalizadas cuja exclusão dos detalhes ainda não terminou. */
   limpezasPendentes: string[]
+  /** Logo depois de importar e conferir: o botão OTIMIZAR MINHA ROTA fica em destaque até ser usado. */
+  destacarOtimizar: boolean
   /** Conferência não terminada perto de expirar (Q2): aviso com Continuar / Descartar. */
   avisoConferencia: { arquivo: string; atualizadaEm: number; expiraEm: number; expirada: boolean } | null
   /** De onde saiu a otimização atual (o ponto em si não fica no estado). */
@@ -268,6 +270,7 @@ export const useEstado = create<Estado>((set, get) => ({
   gravacao: 'ok',
   limpezasPendentes: [],
   avisoConferencia: null,
+  destacarOtimizar: false,
   carregarRota: (r) => {
     const e = get()
     const marcada = Object.values(e.pacotes).some((ps) => ps.some((x) => x !== 'pendente'))
@@ -397,7 +400,7 @@ export const useEstado = create<Estado>((set, get) => ({
     ORDEM_OTIMIZADA = calcularOtimizada()
     const origem: TipoOrigem = externa ? 'gps' : inicioPadrao() ? 'teste' : 'primeira'
     const plano = novoPlano(get().rotaId, 'otimizada', ORDEM_OTIMIZADA, origem)
-    set({ fase: 'otimizada', ordem: [...ORDEM_OTIMIZADA], sugestao: null, origemOtimizacao: origem, planos: podarPlanos([...get().planos, plano]), planoAtivo: plano.id })
+    set({ fase: 'otimizada', destacarOtimizar: false, ordem: [...ORDEM_OTIMIZADA], sugestao: null, origemOtimizacao: origem, planos: podarPlanos([...get().planos, plano]), planoAtivo: plano.id })
   },
   restaurarPlano: (id) => {
     const p = get().planos.find((x) => x.id === id)

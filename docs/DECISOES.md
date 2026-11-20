@@ -155,3 +155,18 @@ A Etapa 3 está **tecnicamente aceita para validação**; a **aprovação final 
 
 ## Correção do repositório (usuário, 2026-11-19 22:56)
 O proprietário correto é **victor1923hsm** (não victor1923moreira): repositório `victor1923hsm/rotavhs-go`, endereço https://victor1923hsm.github.io/rotavhs-go/. O workflow só publica nesse repositório (`if: github.repository == 'victor1923hsm/rotavhs-go'`) e com o caminho fixo `/rotavhs-go/`.
+
+## I1 — Importação real de planilhas SPX no protótipo publicado (autorizada pelo usuário em 2026-11-20 06:10)
+**Escopo:** só a importação funcional e a integração com o que já existe. Não aprova as Etapas 4–7, a otimização funcional nem os alertas. **Implementada e validada localmente; publicar exige nova autorização específica.**
+
+| Item | O que ficou |
+|---|---|
+| Arquivos | **.xlsx** e **.csv** (vírgula ou ponto e vírgula, UTF-8 ou Windows-1252). **.xls (Excel antigo) recusado** com orientação: o leitor atual não lê .xls e incluir um leitor exigiria dependência nova (a versão do SheetJS no npm está desatualizada e tem falhas conhecidas). Arquivo que não é planilha, vazio, > 15 MB → mensagem clara |
+| Erros | Diz **qual coluna faltou** (ex.: "Destination Address"); cabeçalho não encontrado; planilha sem pacotes. Contabilidade: linhas = pacotes + ignoradas; paradas sem coordenada (e quantas com valor inválido); **coordenada longe demais do resto da rota (> 60 km da mediana: localização não confirmada, fora do mapa, sem mover a posição)**; linhas sem endereço; pacotes sem código |
+| Duplicidades | Pacote repetido **impede confirmar** até você escolher qual linha remover (nunca remove a última). Mesmo endereço com números diferentes e parada dividida continuam como antes (decisão sua, desfazível) |
+| Agrupamento | Mesmo Stop + mesmo endereço (porta, inclusive apto/bloco/quadra/lote) + mesma coordenada = uma visita. Endereços diferentes com a mesma coordenada **não** são unidos. Apto 101 × Apto 102 = visitas separadas e sinalizadas ("são o mesmo local" se você quiser). Stop original preservado; sem Stop → "?" |
+| Conferência | Busca por **número da parada** ou **parte do código do pacote** (SPX TN). Visitas sem localização sinalizadas na prévia, em Pedidos e no cartão da parada |
+| Rota | Salva no aparelho (Dexie), retomada após fechar, entrega parcial por pacote, finalização com resumo e exclusão (política da Etapa 3). Depois de confirmar: **OTIMIZAR MINHA ROTA em destaque**. A otimização aparece como **cálculo de teste (DEMONSTRAÇÃO, linha reta)** e só muda a ordem com o toque |
+| Busca na rota | Pedidos/Rotas: "Buscar pelo código do pacote" além do número da parada |
+| Selo | "PROTÓTIPO DE TESTE · sua planilha, só neste aparelho" com rota real; "· dados fictícios" com a de exemplo ou a fictícia; só "PROTÓTIPO DE TESTE" na tela Importar |
+| Privacidade | Leitura no aparelho (Worker). Nenhum envio: o teste registra **só GET** para o próprio app e para as imagens do mapa, sem código, endereço ou coordenada nas URLs. **Service worker não guarda planilhas** (`globIgnores` xlsx/xls/csv; nenhuma regra de cache para elas; a do aparelho nem passa pela rede). Cartão "Seus dados ficam só neste aparelho" explica armazenamento e exclusão |

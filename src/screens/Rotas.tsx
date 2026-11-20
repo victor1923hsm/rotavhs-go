@@ -1,7 +1,7 @@
 import { lazy, Suspense, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useIr } from '@/app/navegacao'
-import { PROTOTIPO } from '@/app/prototipo'
+import { ehFicticia } from '@/app/prototipo'
 import { RefreshCw, Search, X } from 'lucide-react'
 import { ordemOtimizada, parada, resumoDaOrdem, useEstado } from '@/app/estado'
 import { duracao, numero } from '@/core/formato'
@@ -68,7 +68,11 @@ export function Rotas() {
 
       {e.fase === 'revisao' && (
         <div className="otimizar-cartao">
-          <button className="botao destaque" onClick={e.otimizar}>OTIMIZAR MINHA ROTA</button>
+          {e.destacarOtimizar && <p className="rotulo" role="status" style={{ margin: '0 2px 8px', color: 'inherit', fontWeight: 600 }}>Rota importada e conferida. Próximo passo:</p>}
+          <button className={`botao destaque${e.destacarOtimizar ? ' pulsar' : ''}`} onClick={e.otimizar}>OTIMIZAR MINHA ROTA</button>
+          <p className="rotulo" style={{ margin: '8px 2px 0', color: 'inherit' }}>
+            Cálculo de teste: ordem estimada pela distância em linha reta, sem ruas reais <SeloDemo />. A ordem só muda com o seu toque.
+          </p>
           <p className="rotulo" style={{ margin: '8px 2px 0', color: 'inherit' }}>
             Ponto de partida:{' '}
             {gpsPerto ? (
@@ -93,7 +97,7 @@ export function Rotas() {
             <MapaRota ids={e.ordem} proxima={e.fase === 'andamento' ? proxima : undefined} selecionada={e.selecionada} modo="mini" aoTocarMapa={() => setCheio(true)} aoVerLista={verLista} />
           )}
         </Suspense>
-        <span className="mapa-legenda" style={{ top: 10, left: 10, fontWeight: 700, letterSpacing: '.06em', fontSize: 10 }}>{e.rota.fonte === 'exemplo' ? 'ROTA DE EXEMPLO' : PROTOTIPO ? 'PLANILHA FICTÍCIA' : 'SUA PLANILHA'}</span>
+        <span className="mapa-legenda" style={{ top: 10, left: 10, fontWeight: 700, letterSpacing: '.06em', fontSize: 10 }}>{e.rota.fonte === 'exemplo' ? 'ROTA DE EXEMPLO' : ehFicticia(e.rota) ? 'PLANILHA FICTÍCIA' : 'SUA PLANILHA'}</span>
         <span className="mapa-legenda" style={{ bottom: 10, left: 10 }}>{legenda}</span>
       </div>
       <CartaoParada id={e.selecionada} />

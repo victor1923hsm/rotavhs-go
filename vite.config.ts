@@ -59,6 +59,8 @@ export default defineConfig({
       workbox: {
         // App inteiro em precache (abre offline), inclusive o bloco do mapa.
         globPatterns: ['**/*.{js,mjs,css,html,svg,png,webmanifest}'],
+        // Planilhas nunca vão para o cache do app (nem a fictícia). As do aparelho nem passam pela rede.
+        globIgnores: ['**/*.{xlsx,xls,csv}'],
         maximumFileSizeToCacheInBytes: 3 * 1024 * 1024,
         navigateFallback: 'index.html',
         cleanupOutdatedCaches: true,

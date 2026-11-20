@@ -2,17 +2,19 @@ import { useState } from 'react'
 import { useIr } from '@/app/navegacao'
 import { X } from 'lucide-react'
 import { rotaAtual, useEstado } from '@/app/estado'
-import { buscarStop, rotuloStop } from '@/core/parada'
+import { buscarParadas, rotuloStop } from '@/core/parada'
 
-/** Busca imediata pelo número da parada (teclado numérico). Mostra todas as partes de uma parada dividida. */
+/** Busca imediata pelo número da parada (teclado numérico) ou pelo código do pacote. Mostra todas as partes de uma parada dividida. */
 export function BuscaParada() {
   const aberta = useEstado((e) => e.buscaAberta)
   const abrir = useEstado((e) => e.abrirBusca)
   const selecionar = useEstado((e) => e.selecionar)
   const irPara = useIr()
   const [texto, setTexto] = useState('')
+  const [porCodigo, setPorCodigo] = useState(false)
   if (!aberta) return null
-  const achadas = texto ? buscarStop(rotaAtual().paradas, texto) : []
+  const busca = buscarParadas(rotaAtual().paradas, texto)
+  const achadas = texto ? busca.paradas : []
   const ir = (id: string) => {
     selecionar(id)
     abrir(false)
@@ -37,22 +39,31 @@ export function BuscaParada() {
           <label className="entrada">
             <input
               autoFocus
-              inputMode="numeric"
-              placeholder="Número da parada (ou ?)"
+              key={porCodigo ? 'codigo' : 'numero'}
+              inputMode={porCodigo ? 'text' : 'numeric'}
+              autoCapitalize={porCodigo ? 'characters' : 'off'}
+              autoComplete="off"
+              spellCheck={false}
+              placeholder={porCodigo ? 'Código do pacote (ex.: BR26…)' : 'Número da parada (ou ?)'}
               value={texto}
               onChange={(e) => setTexto(e.target.value)}
-              aria-label="Número da parada"
+              aria-label={porCodigo ? 'Código do pacote' : 'Número da parada'}
             />
           </label>
         </form>
+        <button className="botao-texto" style={{ minHeight: 44 }} onClick={() => { setPorCodigo((v) => !v); setTexto('') }}>
+          {porCodigo ? 'Buscar pelo número da parada' : 'Buscar pelo código do pacote'}
+        </button>
         <div style={{ marginTop: 8 }}>
-          {texto && achadas.length === 0 && <p className="sub">Nenhuma parada com esse número.</p>}
+          {texto && busca.tipo === 'nada' && <p className="sub">Digite pelo menos 3 caracteres do código.</p>}
+          {texto && busca.tipo !== 'nada' && achadas.length === 0 && <p className="sub">{busca.tipo === 'codigo' ? 'Nenhum pacote com esse código.' : 'Nenhuma parada com esse número.'}</p>}
           {achadas.map((p) => (
             <button key={p.id} className="seq-linha" onClick={() => ir(p.id)}>
               <span className="chip-stop cor-1" style={{ background: 'var(--superficie)' }}>{rotuloStop(p)}</span>
               <span className="cresce">
                 {p.endereco}
                 {p.parte && <span className="rotulo"> · endereço {p.parte.i} de {p.parte.n}</span>}
+                {busca.codigos.get(p.id)?.map((c) => <span key={c} className="rotulo" style={{ display: 'block' }}>{c}</span>)}
               </span>
             </button>
           ))}

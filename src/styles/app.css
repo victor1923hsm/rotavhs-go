@@ -76,7 +76,10 @@ input {
 }
 /* Espaço livre embaixo para o conteúdo passar por trás do menu flutuante. */
 :root {
-  --sob-menu: calc(100px + env(safe-area-inset-bottom));
+  /* Margem inferior do sistema. No navegador (aba do Chrome/Safari) a página não fica atrás da barra do sistema,
+     mas alguns Android informam essa margem mesmo assim e o menu subia demais: só vale com o app instalado. */
+  --inset-baixo: env(safe-area-inset-bottom, 0px);
+  --sob-menu: calc(100px + var(--inset-baixo));
 }
 .rolagem {
   position: absolute;
@@ -91,7 +94,7 @@ input {
   position: absolute;
   left: 12px;
   right: 12px;
-  bottom: calc(12px + env(safe-area-inset-bottom));
+  bottom: calc(12px + var(--inset-baixo));
   height: 64px;
   padding: 6px;
   border-radius: 26px;
@@ -237,7 +240,7 @@ input {
 .aviso-flutuante {
   position: absolute;
   left: 50%;
-  bottom: calc(90px + env(safe-area-inset-bottom));
+  bottom: calc(90px + var(--inset-baixo));
   transform: translateX(-50%) translateY(16px);
   background: var(--tinta);
   color: var(--sobre-tinta);
@@ -550,7 +553,7 @@ input {
   position: absolute;
   left: 12px;
   right: 12px;
-  bottom: calc(12px + env(safe-area-inset-bottom));
+  bottom: calc(12px + var(--inset-baixo));
   z-index: 3;
 }
 .mapa-cheio-cartao .cartao-parada {
@@ -598,11 +601,22 @@ input {
 }
 
 /* ---------- Estatísticas ---------- */
+/* O círculo fica embaixo, acima do menu; em telas baixas ele desce para depois do conteúdo e a tela rola
+   (antes ficava preso ao fundo e subia por cima do texto). */
 .est {
   position: absolute;
   inset: 0;
   background: var(--tinta);
-  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+.est-folha {
+  position: relative;
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+  padding-bottom: calc(92px + var(--inset-baixo));
 }
 .est-painel {
   position: absolute;
@@ -633,9 +647,8 @@ input {
   margin-top: 22px;
 }
 .est-conteudo {
-  position: absolute;
-  top: 44px;
-  left: 16px;
+  position: relative;
+  margin: 44px 0 52px 16px;
   width: calc(76% - 26px);
   color: var(--sobre-menta);
 }
@@ -654,11 +667,11 @@ input {
   opacity: 0.75;
 }
 .est-roda {
-  position: absolute;
-  left: 9%;
+  position: relative;
+  margin: auto 0 0 9%;
   width: 82%;
-  bottom: calc(92px + env(safe-area-inset-bottom));
   aspect-ratio: 1;
+  flex-shrink: 0;
 }
 .est-anel {
   position: absolute;
@@ -1189,7 +1202,7 @@ html[data-direcao='aba-esquerda']::view-transition-old(tela) { animation-name: v
   position: absolute;
   left: 12px;
   right: 12px;
-  bottom: calc(88px + env(safe-area-inset-bottom));
+  bottom: calc(88px + var(--inset-baixo));
   z-index: 56;
   display: flex;
   align-items: center;
@@ -1229,7 +1242,7 @@ html[data-direcao='aba-esquerda']::view-transition-old(tela) { animation-name: v
   position: absolute;
   left: 12px;
   right: 12px;
-  bottom: calc(88px + env(safe-area-inset-bottom));
+  bottom: calc(88px + var(--inset-baixo));
   z-index: 55;
   display: flex;
   gap: 8px;
@@ -1250,3 +1263,19 @@ html[data-direcao='aba-esquerda']::view-transition-old(tela) { animation-name: v
   color: var(--sobre-aviso);
 }
 .inatividade.abandonada { background: var(--erro-fundo); color: var(--erro-texto); font-weight: 600; }
+
+@media (display-mode: browser) {
+  :root { --inset-baixo: 0px; }
+}
+/* Depois de importar e conferir: chama a atenção para OTIMIZAR MINHA ROTA (sem animação com "reduzir movimento"). */
+.botao.destaque.pulsar {
+  outline: 3px solid var(--menta-escura);
+  outline-offset: 3px;
+  animation: pulsar 1.6s ease-in-out 3;
+}
+@keyframes pulsar {
+  50% { outline-offset: 7px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .botao.destaque.pulsar { animation: none; }
+}

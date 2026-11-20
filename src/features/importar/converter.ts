@@ -5,7 +5,34 @@
 import { addressLine } from '@/core/address/address'
 import type { DraftStop, ImportResult } from '@/core/import/build'
 import { applyDecisions, type Decision } from '@/core/import/review'
+import { linhaRetaKm } from '@/core/geo'
 import type { Parada } from '@/core/parada'
+
+/** Acima disso da mediana da rota, a coordenada da planilha não é confiável (uma rota SPX cabe numa cidade). */
+export const RAIO_SUSPEITO_KM = 60
+
+/**
+ * Coordenadas muito longe da mediana das outras viram "não confirmadas" (saem do mapa e do km).
+ * Precisa de pelo menos 3 pontos; nunca move nem inventa posição.
+ */
+export function marcarCoordenadasSuspeitas(paradas: Parada[]): number {
+  const com = paradas.filter((p) => !p.semCoordenada && Number.isFinite(p.lat) && Number.isFinite(p.lon))
+  if (com.length < 3) return 0
+  const mediana = (v: number[]) => {
+    const o = [...v].sort((a, b) => a - b)
+    const m = o.length >> 1
+    return o.length % 2 ? o[m]! : (o[m - 1]! + o[m]!) / 2
+  }
+  const centro = { lat: mediana(com.map((p) => p.lat)), lon: mediana(com.map((p) => p.lon)) }
+  let n = 0
+  for (const p of com)
+    if (linhaRetaKm(p, centro) > RAIO_SUSPEITO_KM) {
+      p.semCoordenada = true
+      p.coordenadaSuspeita = true
+      n++
+    }
+  return n
+}
 
 export interface RotaImportada {
   fonte: 'planilha' | 'exemplo'
@@ -15,6 +42,8 @@ export interface RotaImportada {
   ordemSpx: string[]
   pacotes: number
   semCoordenada: number
+  /** Quantas têm coordenada longe demais do resto (contadas também em `semCoordenada`). */
+  coordenadasSuspeitas?: number
 }
 
 const parteDe = (s: DraftStop) => {
@@ -61,6 +90,7 @@ export function rotaDaImportacao(r: ImportResult, decisoes: readonly Decision[],
       ...(comPonto.length ? {} : { semCoordenada: true }),
     })
   }
+  const suspeitas = marcarCoordenadasSuspeitas(paradas)
   const ordem = new Map(ef.stops.map((s) => [s.key, s.order]))
   const ordemSpx = [...paradas]
     .sort((a, b) => (menorSeq.get(a.id) ?? Infinity) - (menorSeq.get(b.id) ?? Infinity) || (ordem.get(a.id) ?? 0) - (ordem.get(b.id) ?? 0))
@@ -72,5 +102,6 @@ export function rotaDaImportacao(r: ImportResult, decisoes: readonly Decision[],
     ordemSpx,
     pacotes: ef.packages.length,
     semCoordenada: paradas.filter((p) => p.semCoordenada).length,
+    ...(suspeitas ? { coordenadasSuspeitas: suspeitas } : {}),
   }
 }

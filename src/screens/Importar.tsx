@@ -1,16 +1,17 @@
 import { useEffect, useMemo, useState } from 'react'
 import { LinkFluido, useIr } from '@/app/navegacao'
-import { ArrowLeft, FileSpreadsheet, TriangleAlert } from 'lucide-react'
+import { ArrowLeft, FileSpreadsheet, Search, ShieldCheck, TriangleAlert } from 'lucide-react'
 import { ROTA_EXEMPLO, useEstado } from '@/app/estado'
 import { addressLine } from '@/core/address/address'
 import type { DraftStop } from '@/core/import/build'
 import { groupFindings, isResolved, keepAllSeparate, removeRow, undo, type Decision, type Finding } from '@/core/import/review'
 import { linhaRetaKm } from '@/core/geo'
 import { numero } from '@/core/formato'
+import { buscarParadas } from '@/core/parada'
 import { rotaDaImportacao } from '@/features/importar/converter'
 import { lerArquivo } from '@/features/importar/ler'
 import type { Leitura } from '@/features/importar/leitura'
-import { PLANILHA_FICTICIA, PROTOTIPO } from '@/app/prototipo'
+import { ARQUIVO_FICTICIO, PLANILHA_FICTICIA, PROTOTIPO } from '@/app/prototipo'
 import { descartarConferencia, guardarConferencia, lerConferencia } from '@/app/persistencia'
 import type { RotaImportada } from '@/features/importar/converter'
 
@@ -35,6 +36,7 @@ export function Importar() {
   const [lote, setLote] = useState<number | null>(null)
   const [retomadaEm, setRetomadaEm] = useState<number | null>(null)
   const [trocar, setTrocar] = useState<null | { nova: RotaImportada; depois: () => void }>(null)
+  const [busca, setBusca] = useState('')
   const pacotes = useEstado((e) => e.pacotes)
   const fase = useEstado((e) => e.fase)
   const marcados = Object.values(pacotes).flat().filter((x) => x !== 'pendente').length
@@ -98,36 +100,48 @@ export function Importar() {
     try {
       const r = await fetch(import.meta.env.BASE_URL + PLANILHA_FICTICIA)
       if (!r.ok) throw new Error(String(r.status))
-      await escolher(new File([await r.blob()], 'planilha-ficticia-spx.xlsx'))
+      await escolher(new File([await r.blob()], ARQUIVO_FICTICIO))
     } catch {
       setLendo(false)
       setErro('Não consegui abrir a planilha fictícia (precisa de conexão na primeira vez).')
     }
   }
 
-  // Protótipo publicado: só dados fictícios (P1). A planilha do aparelho fica para a versão do PC.
-  const escolha = PROTOTIPO ? (
-    <button className="arquivo" style={{ cursor: 'pointer', width: '100%', textAlign: 'left' }} onClick={ficticia} disabled={lendo}>
-      <div className="ic"><FileSpreadsheet size={22} /></div>
-      <div className="cresce">
-        <div style={{ fontSize: 17 }}>{lendo ? 'Lendo planilha…' : 'Testar com a planilha fictícia da SPX'}</div>
-        <div className="rotulo" style={{ color: 'inherit' }}>
-          {leitura ? `lida em ${leitura.ms} ms · toque para ler de novo` : 'Protótipo: só dados fictícios. Planilha real só na versão do seu PC'}
+  // Planilha do aparelho (autorizada no protótipo publicado em 2026-11-20): lida e guardada só aqui.
+  // A planilha fictícia continua disponível no protótipo, para testar sem dado real.
+  const escolha = (
+    <>
+      <label className="arquivo" style={{ cursor: 'pointer' }}>
+        <div className="ic"><FileSpreadsheet size={22} /></div>
+        <div className="cresce">
+          <div style={{ fontSize: 17 }}>{lendo ? 'Lendo planilha…' : leitura ? leitura.arquivo : 'Escolher planilha da SPX'}</div>
+          <div className="rotulo" style={{ color: 'inherit' }}>
+            {leitura ? `aba “${leitura.aba}” · lida em ${leitura.ms} ms · toque para trocar` : 'XLSX ou CSV · lida só neste aparelho'}
+          </div>
         </div>
-      </div>
-    </button>
-  ) : (
-    <label className="arquivo" style={{ cursor: 'pointer' }}>
-      <div className="ic"><FileSpreadsheet size={22} /></div>
-      <div className="cresce">
-        <div style={{ fontSize: 17 }}>{lendo ? 'Lendo planilha…' : leitura ? leitura.arquivo : 'Escolher planilha da SPX'}</div>
-        <div className="rotulo" style={{ color: 'inherit' }}>
-          {leitura ? `aba “${leitura.aba}” · lida em ${leitura.ms} ms · toque para trocar` : 'XLSX ou CSV · lida só neste aparelho'}
-        </div>
-      </div>
-      <input type="file" accept=".xlsx,.csv" hidden aria-label="Escolher planilha" onChange={(e) => escolher(e.target.files?.[0])} />
-    </label>
+        <input
+          type="file"
+          accept=".xlsx,.csv,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv,text/comma-separated-values,application/vnd.ms-excel"
+          hidden
+          aria-label="Escolher planilha"
+          onChange={(e) => {
+            void escolher(e.target.files?.[0])
+            e.target.value = ''
+          }}
+        />
+      </label>
+      {PROTOTIPO && !leitura && (
+        <button className="botao-texto" style={{ minHeight: 44 }} onClick={ficticia} disabled={lendo}>
+          Ou testar com a planilha fictícia da SPX
+        </button>
+      )}
+      {!leitura && <AvisoPrivacidade />}
+    </>
   )
+  // Pacote repetido sem decisão entraria duas vezes na rota: pede a escolha antes de confirmar.
+  const repetidosAbertos = leitura ? leitura.achados.filter((f) => f.kind === 'pacote_repetido' && !isResolved(decisoes, f)).length : 0
+  const achadasBusca = previa && busca.trim() ? buscarParadas(previa.paradas, busca) : null
+  const listaPrevia = previa ? (achadasBusca ? achadasBusca.paradas.map((p) => p.id) : previa.ordemSpx.slice(0, 12)) : []
 
   return (
     <div className="rolagem">
@@ -182,7 +196,7 @@ export function Importar() {
             <div><div className="rotulo">Paradas</div><div className="v">{previa.paradas.length}</div></div>
             <div><div className="rotulo">Distância est.</div><div className="v">{numero(estimarKm(previa))} km</div></div>
           </div>
-          <Contabilidade l={leitura} removidas={decisoes.filter((d) => d.type === 'remover_linha').length} />
+          <Contabilidade l={leitura} removidas={decisoes.filter((d) => d.type === 'remover_linha').length} suspeitas={previa.coordenadasSuspeitas ?? 0} />
 
           {grupos.length > 0 && (
             <>
@@ -225,35 +239,64 @@ export function Importar() {
           )}
 
           <h2 style={{ fontSize: 17, fontWeight: 600, margin: '18px 0 4px' }}>Prévia das paradas</h2>
+          <label className="entrada" style={{ marginTop: 6 }}>
+            <Search size={18} aria-hidden />
+            <input
+              value={busca}
+              onChange={(e) => setBusca(e.target.value)}
+              placeholder="Buscar parada ou código do pacote"
+              aria-label="Buscar parada ou código do pacote na conferência"
+              autoComplete="off"
+              spellCheck={false}
+              autoCapitalize="characters"
+            />
+          </label>
+          {achadasBusca && (
+            <p className="rotulo" role="status" style={{ margin: '6px 2px' }}>
+              {achadasBusca.tipo === 'nada' ? 'Digite o número da parada ou 3+ caracteres do código.' : `${achadasBusca.paradas.length} ${achadasBusca.paradas.length === 1 ? 'parada encontrada' : 'paradas encontradas'}`}
+            </p>
+          )}
           <div className="tabela">
             <div className="cab"><div className="c1">PARADA</div><div className="cresce">ENDEREÇO</div><div className="c3">PACOTES</div></div>
-            {previa.ordemSpx.slice(0, 12).map((id) => {
+            {listaPrevia.map((id) => {
               const p = previa.paradas.find((x) => x.id === id)!
               return (
                 <div key={id} className="lin">
                   <div className="c1"><span className="chip-stop" style={{ background: 'var(--tinta)', color: 'var(--sobre-tinta-claro)' }}>{p.stop ?? '?'}</span></div>
-                  <div className="cresce">{p.endereco}{p.outrosEnderecos ? <span className="rotulo"> +{p.outrosEnderecos.length}</span> : null}</div>
+                  <div className="cresce">
+                    {p.endereco}{p.outrosEnderecos ? <span className="rotulo"> +{p.outrosEnderecos.length}</span> : null}
+                    {p.semCoordenada && <span className="rotulo" style={{ display: 'block', color: 'var(--erro-texto)' }}>{p.coordenadaSuspeita ? 'localização não confirmada · fora do mapa' : 'sem coordenada · fora do mapa'}</span>}
+                    {achadasBusca?.tipo === 'codigo' && achadasBusca.codigos.get(id)?.map((c) => <span key={c} className="rotulo" style={{ display: 'block' }}>{c}</span>)}
+                    {achadasBusca?.tipo === 'stop' && <span className="rotulo" style={{ display: 'block' }}>{p.pacotes.join(' · ')}</span>}
+                  </div>
                   <div className="c3">{p.pacotes.length}</div>
                 </div>
               )
             })}
           </div>
-          {previa.paradas.length > 12 && <p className="rotulo" style={{ marginTop: 8 }}>… e mais {previa.paradas.length - 12} paradas, na ordem da SPX (Sequence).</p>}
+          {!achadasBusca && previa.paradas.length > 12 && <p className="rotulo" style={{ marginTop: 8 }}>… e mais {previa.paradas.length - 12} paradas, na ordem da SPX (Sequence). Use a busca para achar uma parada ou um pacote.</p>}
 
+          {repetidosAbertos > 0 && (
+            <p className="cartao" role="alert" style={{ marginTop: 16, background: 'var(--erro-fundo)', color: 'var(--erro-texto)' }}>
+              {repetidosAbertos === 1 ? 'Há 1 pacote repetido' : `Há ${repetidosAbertos} pacotes repetidos`} na planilha. Escolha acima qual linha remover para cada um antes de confirmar.
+            </p>
+          )}
           <button
             className="botao"
             style={{ marginTop: 16 }}
+            disabled={repetidosAbertos > 0}
             onClick={() =>
               usarRota(previa, () => {
                 void descartarConferencia()
-                avisar(`Planilha carregada: ${previa.paradas.length} paradas`)
+                useEstado.setState({ destacarOtimizar: true })
+                avisar(`Rota importada: ${previa.paradas.length} paradas · ${previa.pacotes} pacotes`)
                 ir('/rotas')
               })
             }
           >
             Confirmar importação →
           </button>
-          <p className="rotulo" style={{ marginTop: 8 }}>A rota fica guardada só neste aparelho e volta se o app fechar.</p>
+          <p className="rotulo" style={{ marginTop: 8 }}>A rota fica guardada só neste aparelho e volta se o app fechar. Ao finalizar, endereços e códigos são apagados e fica só o resumo.</p>
           <button className="botao-texto" onClick={descartar}>Descartar esta conferência</button>
         </>
       )}
@@ -269,11 +312,14 @@ function estimarKm(r: ReturnType<typeof rotaDaImportacao>): number {
   return km
 }
 
-function Contabilidade({ l, removidas }: { l: Leitura; removidas: number }) {
+function Contabilidade({ l, removidas, suspeitas }: { l: Leitura; removidas: number; suspeitas: number }) {
   const a = l.resultado.accounting
   const motivos = Object.entries(l.resultado.ignored.reduce<Record<string, number>>((t, i) => ((t[i.reason] = (t[i.reason] ?? 0) + 1), t), {}))
   const semNumero = l.resultado.stops.filter((s) => s.originalNumber === null).length
   const semCoord = l.resultado.stops.filter((s) => !s.sheetPoint).length
+  const coordInvalida = l.resultado.stops.filter((s) => s.issues.some((i) => i.code === 'coordenada_invalida')).length
+  const semEndereco = l.resultado.stops.filter((s) => s.issues.some((i) => i.code === 'sem_endereco')).length
+  const semCodigo = l.resultado.packages.filter((p) => !p.trackingCode).length
   return (
     <div className="cartao" style={{ marginTop: 12 }}>
       <span className="selo-estado" style={{ padding: 0, background: 'none' }}>CONTABILIDADE</span>
@@ -282,7 +328,10 @@ function Contabilidade({ l, removidas }: { l: Leitura; removidas: number }) {
       </p>
       {motivos.map(([m, n]) => <p key={m} className="sub">• {n} {MOTIVO[m] ?? m}</p>)}
       {semNumero > 0 && <p className="sub">• {semNumero} {semNumero > 1 ? 'pacotes vieram' : 'pacote veio'} sem número de parada: {semNumero > 1 ? 'ficam' : 'fica'} como “?”, sem número inventado.</p>}
-      {semCoord > 0 && <p className="sub">• {semCoord} sem coordenada: {semCoord > 1 ? 'ficam' : 'fica'} na lista, fora do mapa e do cálculo de km.</p>}
+      {semCoord > 0 && <p className="sub">• {semCoord} {semCoord > 1 ? 'paradas' : 'parada'} sem coordenada{coordInvalida ? ` (${coordInvalida} com valor inválido)` : ''}: {semCoord > 1 ? 'ficam' : 'fica'} na lista, fora do mapa e do cálculo de km. Nenhuma posição é inventada.</p>}
+      {suspeitas > 0 && <p className="sub">• {suspeitas} {suspeitas > 1 ? 'paradas' : 'parada'} com coordenada longe demais do resto da rota (mais de 60 km): localização não confirmada, fora do mapa.</p>}
+      {semEndereco > 0 && <p className="sub">• {semEndereco} {semEndereco > 1 ? 'linhas' : 'linha'} sem endereço: confira na etiqueta.</p>}
+      {semCodigo > 0 && <p className="sub">• {semCodigo} {semCodigo > 1 ? 'pacotes' : 'pacote'} sem código (SPX TN): {semCodigo > 1 ? 'aparecem' : 'aparece'} como “linha N”.</p>}
       <p className="sub">• Colunas reconhecidas: {Object.keys(l.mapeamento).length}.</p>
     </div>
   )
@@ -347,3 +396,23 @@ function CartaoAchado({ grupo, decisoes, porChave, decidir, desfazer, remover }:
   )
 }
 
+
+/** O que acontece com a planilha e os dados dela (explicação fixa, antes de escolher o arquivo). */
+function AvisoPrivacidade() {
+  return (
+    <div className="cartao" style={{ marginTop: 12 }} aria-label="Onde ficam os dados da planilha">
+      <div className="linha"><ShieldCheck size={18} aria-hidden /><strong className="cresce">Seus dados ficam só neste aparelho</strong></div>
+      <p className="sub" style={{ margin: '6px 0 0' }}>
+        A planilha é lida aqui no celular. Nada é enviado: nem o arquivo, nem endereços, códigos ou coordenadas. O arquivo em si não é guardado; durante a conferência, os dados lidos ficam no aparelho para não se perderem se o app fechar (até 7 dias).
+      </p>
+      <p className="sub" style={{ margin: '6px 0 0' }}>
+        A rota (paradas, endereços, códigos e suas marcações) fica guardada no navegador deste aparelho para continuar se o app fechar.
+        Ao finalizar ou trocar de rota, esses detalhes são apagados e fica só o resumo (quantidades, km e custo estimados).
+        Você também pode excluir a rota em Estatísticas → Alertas e dados.
+      </p>
+      <p className="rotulo" style={{ margin: '6px 0 0' }}>
+        O mapa baixa imagens das ruas da região exibida (OpenFreeMap), sem endereços nem códigos. Maps e Waze só recebem o destino quando você toca neles.
+      </p>
+    </div>
+  )
+}

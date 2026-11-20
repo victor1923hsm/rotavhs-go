@@ -67,7 +67,7 @@ export function Pedidos() {
           ))}
           <div className="rotulo" style={{ marginTop: 2 }}>{p.bairro}{p.cep ? ` · CEP ${p.cep}` : ''}{p.semNumero ? ' · casa sem número' : ''}</div>
           {p.outrosEnderecos && <span className="selo-estado" style={{ display: 'inline-block', marginTop: 6 }}>MESMO LOCAL · {p.outrosEnderecos.length + 1} ENDEREÇOS (SUA DECISÃO)</span>}
-          {p.semCoordenada && <span className="selo-estado aviso" style={{ display: 'inline-block', marginTop: 6 }}>SEM COORDENADA · FORA DO MAPA</span>}
+          {p.semCoordenada && <span className="selo-estado aviso" style={{ display: 'inline-block', marginTop: 6 }}>{p.coordenadaSuspeita ? 'LOCALIZAÇÃO NÃO CONFIRMADA · FORA DO MAPA' : 'SEM COORDENADA · FORA DO MAPA'}</span>}
         </div>
 
         <div className="linha" style={{ marginTop: 12, gap: 8 }}>

@@ -18,7 +18,7 @@ export function CartaoParada({ id, aoAbrir }: { id: string; aoAbrir?: () => void
           <div className="rotulo">
             {p.pacotes.length} {p.pacotes.length > 1 ? 'pacotes' : 'pacote'}
             {status === 'entregue' ? ' · entregue' : status === 'falha' ? ' · sem sucesso' : ''}
-            {p.semCoordenada ? ' · sem coordenada (navega pelo endereço)' : ''}
+            {p.semCoordenada ? (p.coordenadaSuspeita ? ' · localização não confirmada (navega pelo endereço)' : ' · sem coordenada (navega pelo endereço)') : ''}
           </div>
         </div>
       </div>

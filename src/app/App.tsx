@@ -3,7 +3,7 @@ import { BrowserRouter, Navigate, Route, Routes, useLocation } from 'react-route
 import { BarChart3, Package, Route as IconeRota } from 'lucide-react'
 import { Aviso } from '@/components/ui/Aviso'
 import { useEstado } from '@/app/estado'
-import { PROTOTIPO } from '@/app/prototipo'
+import { ehFicticia } from '@/app/prototipo'
 import { ABAS, LinkFluido } from '@/app/navegacao'
 import { BuscaParada } from '@/components/domain/BuscaParada'
 import { AlertaProximidade, PedidoGps } from '@/components/domain/Gps'
@@ -48,13 +48,20 @@ function MenuFlutuante() {
   )
 }
 
+/** Selo do protótipo. Na tela Importar fica neutro: ali você pode estar conferindo outra planilha que não a rota carregada. */
+function Selo({ ficticia }: { ficticia: boolean }) {
+  const { pathname } = useLocation()
+  const texto = pathname.endsWith('/importar') ? 'PROTÓTIPO DE TESTE' : ficticia ? 'PROTÓTIPO DE TESTE · dados fictícios' : 'PROTÓTIPO DE TESTE · sua planilha, só neste aparelho'
+  return <div className="selo">{texto}</div>
+}
+
 export function App() {
-  const fonte = useEstado((e) => e.rota.fonte)
+  const ficticia = useEstado((e) => ehFicticia(e.rota))
   useEffect(preCarregarTelas, [])
   return (
     <BrowserRouter basename={import.meta.env.BASE_URL.replace(/\/$/, '')}>
       <div className="app">
-        <div className="selo">{PROTOTIPO || fonte === 'exemplo' ? 'PROTÓTIPO DE TESTE · dados fictícios' : 'PROTÓTIPO DE TESTE · sua planilha, só neste aparelho'}</div>
+        <Selo ficticia={ficticia} />
         <main className="tela">
           <Routes>
             <Route path="/" element={<Navigate to="/pedidos" replace />} />

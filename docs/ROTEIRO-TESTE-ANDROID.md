@@ -11,6 +11,19 @@
 4. **Limite do teste pela rede local (HTTP):** o modo **sem internet** não funciona por HTTP (o navegador só ativa o modo offline em HTTPS). Os passos 1–6 funcionam; o passo 7 (sem internet) fica para depois da publicação no GitHub Pages (HTTPS) ou para a Etapa 4 (HTTPS local, G10/A3).
 5. Não use aba anônima (ela apaga tudo ao fechar).
 
+## Importação real (I1) — só depois de publicada a nova versão
+Aqui **pode** usar a planilha real da SPX: ela é lida e guardada só no celular. Não mande fotos com endereços ou códigos visíveis.
+
+| # | Cenário | Como fazer | Esperado |
+|---|---|---|---|
+| 16 | Escolher a planilha | Pedidos → **Importar rotas** → **Escolher planilha da SPX** → escolha o arquivo exportado (Downloads/Drive) | Abre a conferência com pacotes, paradas e a contabilidade (linhas = pacotes + ignoradas) |
+| 17 | Conferir | Use a busca da conferência com um número de parada e com parte de um código SPX | Acha a parada certa; paradas divididas e endereços sem localização aparecem sinalizados |
+| 18 | Confirmar | **Confirmar importação** | Vai para Rotas com **OTIMIZAR MINHA ROTA** em destaque; selo "PROTÓTIPO DE TESTE · sua planilha, só neste aparelho"; pinos só das paradas com coordenada |
+| 19 | GPS | **Ligar GPS** e "Minha localização" | Ponto azul na sua posição real; a ordem não muda sozinha |
+| 20 | Marcar e reabrir | Marque pacotes (inclusive um parcial), feche o Chrome e reabra | "Continuar de onde parei" com tudo igual |
+| 21 | Sem internet | Com o app já aberto uma vez, **modo avião** → importe a planilha de novo (ou só reabra) | Funciona sem internet; o mapa mostra só áreas já vistas |
+| 22 | Finalizar | Rotas → Finalizar rota → confirme. Estatísticas → Rotas finalizadas | Só o resumo (quantidades, km, custo); nenhum endereço ou código |
+
 ## Como registrar
 Para cada passo: ✅ passou / ❌ falhou / ⚠️ diferente do esperado + uma foto da tela (sem dados reais). Se falhar, anote a hora e o que estava na tela.
 
