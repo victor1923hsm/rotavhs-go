@@ -2,6 +2,8 @@
 
 Situação: **proposta, aguardando aprovação** (decisões em `DECISOES.md`). Criada em 2026-11-18 · **Revisão 1** (2026-11-18): adaptadores de GPS e de distâncias, caminho nativo com segundo plano, aviso do mapa offline, orçamento de desempenho, dados temporários.
 
+**2026-11-24:** §13 traz a proposta da Evolução v2 (10 provedores, motor de otimização, pipeline de GPS, custos dos provedores, caminho para o Android), aguardando aprovação.
+
 ## 1. Plataforma
 **Um único PWA** (React + TypeScript), instalável:
 - no **Android**: Chrome, "Instalar app";
@@ -205,3 +207,126 @@ Os números entram no relatório de cada etapa, a partir da Etapa 1 no PC e na 8
 | GPS | o maior consumo de bateria: alta precisão só com a rota ativa e o app visível |
 | Tela acesa (Wake Lock, brilho alto no sol) | o outro grande consumo; por isso o Wake Lock é opcional |
 | Dados móveis por rota | tiles da área na 1ª vez: estimativa de alguns MB a dezenas de MB, conforme área e zoom (**a medir**); depois, do cache |
+
+
+## 13. Evolução v2 — provedores, motores e caminho para o Android (**proposta de 2026-11-24, aguardando aprovação**)
+
+### 13.1 Atual × proposta
+| Aspecto | Hoje (`33d2322`) | Proposta v2 |
+|---|---|---|
+| Acesso ao aparelho | `platform/localizacao` (interface `LocationProvider`), `platform/armazenamento` (interface `Armazenamento`); o resto chamado direto (`navigator.storage`, `fetch` do mapa, links de navegação em `core/navegar.ts`, cache em `platform/mapaCache.ts`) | **10 provedores** em `src/providers/<nome>/` com `tipos.ts` (interface) + `pwa/` (agora) + `android/` (F10); telas e `core/` só conhecem as interfaces |
+| Otimização | `core/ordem.ts`: vizinho mais próximo + 2-opt, função `Distancia` (pronta para assimetria); chamada na thread da tela; DEMONSTRAÇÃO | `OptimizationEngine` em Worker, com critérios, restrições (prefixo, fixadas, grupos) e matriz de tempo **e** distância |
+| Distâncias | `core/geo.ts` (haversine × 1,35) | `DistanceMatrixProvider`: `estimada` (sempre) e `ruas` (F5, autorizado) |
+| GPS | filtros de salto e precisão, estados, origem confiável (`app/localizacao.ts`) | pipeline em etapas (§13.5) + Diagnóstico |
+| Estado | zustand (`app/estado.ts`, ~24 KB, mistura regras e estado) | regras puras extraídas para `core/` (sessão, sequência, planos); a loja só orquestra |
+| Navegação | deep links Google Maps/Waze | `NavigationProvider` (mesmo comportamento; Android: intents) |
+
+### 13.2 Camadas (alvo)
+```
+src/core/          regras puras (TS, sem navegador): parada, pacotes, importação, sequência, motor de otimização,
+                   pipeline de GPS (funções puras sobre leituras), alertas, custo, resumo, retenção
+src/providers/     interfaces + adaptadores (pwa/ agora, android/ depois)
+src/app/           orquestração (zustand), casos de uso, composição dos provedores (um único ponto: app/provedores.ts)
+src/screens/, src/components/   UI; só falam com app/ e com tipos do core
+src/workers/       otimização e leitura da planilha
+```
+Regra verificável (F0): `screens/`, `components/` e `core/` não importam `providers/*/pwa` nem usam `navigator`, `window.indexedDB`, `fetch`.
+
+### 13.3 As 10 interfaces (esboço; nomes finais na F0)
+| Interface | Responsabilidade | Adaptador PWA (agora) | Adaptador Android (F10) |
+|---|---|---|---|
+| `LocationProvider` | `observar(perfil, aoLer, aoErro)`, `permissao()`, `capabilities { background, heading }` | Geolocation API (`watchPosition`) — já existe | Capacitor + serviço em primeiro plano (segundo plano real) |
+| `RoutingProvider` | `rota(pontos, perfil) → { geometria, km, min, tipo:'ruas', erro? }` | nenhum (estimado) até F5; ORS se V4 | o mesmo HTTP (ou nativo, se houver) |
+| `DistanceMatrixProvider` | `matriz(pontos, perfil) → { km[][], min[][], tipo:'estimada'|'ruas', parcial }` assimétrica | estimada local; ruas por blocos (F5) | igual |
+| `OptimizationEngine` | `otimizar(pedido) → { ordem, custo, criterio, avisos }` em Worker, cancelável | motor próprio em Worker | o mesmo JS no WebView |
+| `NavigationProvider` | `abrir(destino, app)`, `disponiveis()` | links Google Maps / Waze (revisão 11) | intents Android |
+| `GeocodingProvider` | `buscar(texto)`, `reverso(ponto)` — **só por ação sua, um endereço por vez** | nenhum por padrão; opcional com consentimento (V10) | igual |
+| `MapMatchingProvider` | `encaixar(leitura, geometria) → { ponto, desvioM, progresso, trechoIdx }` | **local**, sobre a geometria pelas ruas (F5); sem geometria = distância ao trecho reto | igual |
+| `ProximityEngine` | `avaliar(leitura, pendentes, estado) → alerta?` (A6/A7) | local (já existe em `core/alertas.ts`) | + notificação nativa |
+| `StorageProvider` | rotas, paradas, eventos, planos, resumos, configurações, exclusão verificada | Dexie (já existe) | o mesmo no WebView, ou SQLite se medir melhor |
+| `NotificationProvider` | aviso na tela, vibração, som; notificação do sistema quando permitido | `Vibration` + aviso na tela (sem push, sem servidor) | notificações locais nativas |
+
+Todas têm uma implementação **em memória/simulada** para testes (como `memoria.ts` e `simulado.ts` hoje), sempre rotulada quando aparece na tela.
+
+### 13.4 Motor de otimização (implementação própria)
+**Entrada.**
+- Visitas pendentes (unidades de visita, nunca Stops unidos), origem e critério.
+- Restrições de posição: concluídas fora do problema, próxima protegida, primeira/última, ordem manual travada.
+- Matriz de **distância** e de **tempo** (assimétricas).
+- Perfil do veículo: consumo e velocidade média.
+
+**Critérios (custo de um arco i→j):**
+
+| Critério | Custo | Observação |
+|---|---|---|
+| Menor tempo | `min[i][j] + serviço` | serviço por parada configurável (padrão 2 min) |
+| Menor distância | `km[i][j]` | — |
+| Economia de combustível | `km[i][j] / consumo` (litros); com ruas, penalidade leve por retorno | tende ao de distância; só difere com ruas e retornos (dito na tela) |
+| Inteligente | `α·tempo + β·km + penalidades` (retorno em U, voltar a uma região já atendida) | pesos calibrados na F9; sem motor viário, equivale a tempo estimado |
+
+**Algoritmo.**
+1. Construção por inserção mais barata a partir da origem.
+2. Melhoria local: 2-opt com custo de trecho invertido calculado nos dois sentidos (já preparado em `core/ordem.ts`), Or-opt (mover 1–3 visitas) e troca, com limite de tempo (ex.: 600 ms) e de voltas.
+3. Escolhe a melhor de N partidas determinísticas (semente fixa: o mesmo pedido gera o mesmo resultado).
+4. **Garantia:** se não for melhor que a ordem atual pelo mesmo custo, devolve a atual ("ordem já é boa").
+
+**Agrupamento automático.**
+- Visitas a ≤ ~40 m umas das outras (calibrável) viram um **bloco de ordem** que o motor move junto.
+- Não une Stops nem pacotes.
+- Na tela: "3 paradas próximas".
+
+**Sem motor viário.**
+- Distância: linha reta × fator urbano.
+- Tempo: km ÷ velocidade média configurada.
+- Tudo rotulado "estimado".
+
+**Expansão G15.** Dois nós por parada (lado da rua) e retornos entram como nós e arcos a mais, sem mudar a interface.
+
+**Livres e abertos avaliados como dependência (não adotados agora):**
+- **VROOM:** BSD-2, C++; resolve TSP/VRP com matriz própria. Exigiria servidor ou WASM, o que contraria "sem servidor/baixo consumo". Fica como referência de modelo.
+- **jsprit:** Java, servidor.
+- **OR-Tools:** C++/Python, servidor.
+
+Para 1 veículo e ≤ 250 paradas, um motor próprio em TS no Worker é suficiente e testável. Medir na F2.
+
+### 13.5 Pipeline de GPS (PWA)
+| Etapa | Regra proposta (valores próprios, calibrados em campo) |
+|---|---|
+| Aquisição adaptativa | alta precisão só com rota ativa **e** app visível; `maximumAge` 0–5 s; parado (< 1 m/s por 60 s): interface atualiza menos; pausa em `visibilitychange` |
+| Validação | descarta lat/lon não finitos, precisão > 100 m (já: `DESCARTE_M`), e leitura com data no futuro |
+| Idade | > 30 s = **velha** (não vira origem, não dispara alerta); > 30 s sem leitura = "sem sinal desde hh:mm" |
+| Anti-salto | velocidade implícita > 55 m/s descartada (já: `SALTO_MS`) |
+| Suavização | média ponderada pela precisão (ou Kalman 1-D por eixo) **só para desenhar o ponto**; decisões usam a leitura validada |
+| Encaixe (map matching) | só com geometria pelas ruas (F5): projeção no segmento mais próximo numa janela à frente do último trecho, índice que só avança; sem geometria: distância ao trecho reto até a próxima parada |
+| Desvio | sem ruas: > 300 m por > 2 min (G8); com ruas: limiar curto (ex.: 40 m por 10 s) para **redesenhar o trajeto**, nunca para mudar a ordem sozinho |
+| Aproximação | A6 (raio, histerese de 200 m e 10 min, 30 s entre alertas, sem alerta > ~40 km/h ou precisão > 50 m) |
+| Chegada | ≤ ~50 m da parada **só destaca** a parada; **nunca marca entrega** |
+| Diagnóstico | mostra precisão, idade, intervalo médio, descartes por motivo, estado da permissão e do Wake Lock — só na memória |
+
+### 13.6 Provedores externos: viabilidade e custos (conferido em 2026-11-24; reconferir antes da F5)
+| Serviço | Custo / limites | Privacidade | Uso no Go |
+|---|---|---|---|
+| **OpenRouteService** (API pública) | plano Standard gratuito: Directions 2.000/dia, Matrix 500/dia; matriz até 3.500 elementos por pedido (ex.: 50 × 50) | coordenadas vão a Heidelberg (HeiGIT) | **candidato da F5** (V4): rota de 150 paradas ≈ 9 pedidos de matriz 50 × 50 |
+| **GraphHopper** (API) | gratuito: 500 créditos/dia, **só não comercial**, 5 pontos por rota; Matrix custa origens × destinos ÷ 2 créditos; pagos a partir de ~€69/mês | coordenadas à GraphHopper (Alemanha) | o gratuito não serve: uso de trabalho = comercial; a matriz de 150 × 150 custa ~11.250 créditos |
+| **OSRM público** (FOSSGIS) | servidor de demonstração; proíbe uso pesado e é sem garantia | pedidos ficam em log do servidor | **não usar** em produção |
+| OSRM / Valhalla / GraphHopper / VROOM hospedados por você | grátis (código aberto) | ✔ | contraria "sem servidor/sem Docker/16 GB"; fora |
+| **Nominatim** (OSM) | máx. 1 pedido/s; em massa desencorajado; pede não enviar dados pessoais | — | **não** para a planilha (que já tem coordenadas); no máximo um endereço por ação sua (V10) |
+| **OpenFreeMap** (tiles) | gratuito, sem chave e sem limites declarados, uso comercial permitido, sem garantia | só pedidos de imagens do mapa | mantido (já em uso) |
+| **Google Route Optimization / Navigation SDK** | cobrado por envio; SDK de navegação só nativo | Google | fora ("sem serviço pago") |
+
+**Regra de dados para qualquer provedor externo:**
+- O que sai: só a lista de coordenadas da rota (ou de um par de pontos), sem códigos SPX, endereços, Stops nem nome de arquivo.
+- Quando sai: depois do consentimento da rota.
+- Nunca sai: planilhas e dados pessoais.
+- A resposta fica em memória ou no cache da rota e é apagada ao finalizar.
+
+### 13.7 Caminho para o Android (F10)
+- **Casca:** Capacitor, com o mesmo build do PWA no WebView.
+- **Trocas:** só os adaptadores, montados em `app/provedores.ts` conforme a plataforma:
+  - `LocationProvider`: segundo plano com serviço em primeiro plano e notificação fixa;
+  - `NotificationProvider`;
+  - `NavigationProvider` (intents);
+  - scanner com câmera nativa;
+  - `StorageProvider`, se medido.
+- **Kotlin** só em plugin próprio quando nenhum plugin aberto atender.
+- **Não muda:** `core/`, telas e regras. Os testes do `core/` rodam iguais.

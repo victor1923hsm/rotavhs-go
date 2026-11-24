@@ -1,6 +1,7 @@
 # RotaVHS Go — Plano geral
 
 Situação: **proposta, aguardando aprovação.** Nada foi implementado. Criado em 2026-11-18 · **Revisão 1** (2026-11-18): GPS com caminho nativo, distâncias pelas ruas preparadas, recálculo manual + sugestões, aviso do mapa offline, desempenho como prioridade, dados temporários.
+**2026-11-24:** proposta de **Evolução v2** (plataforma, provedores, motor de otimização, GPS, 17 telas, fases F0–F10) no fim deste arquivo — aguardando aprovação.
 Base: `CLAUDE.md`, `ARQUITETURA.md`, `DECISOES.md` (G1–G15, todas pendentes).
 
 ## Objetivo
@@ -165,3 +166,186 @@ Cada etapa termina com testes reais, relatório e **pedido de aprovação** ante
 
 ## Fora do escopo inicial
 Alertas por voz (existem no RotaVHS; avaliar depois). **Módulo financeiro opcional (Q4):** receita, abastecimento, despesas, km e lucro estimado — a planejar numa etapa própria. Os **alertas de proximidade** saíram desta lista: viraram o requisito R2 (2026-11-19), memória de locais, financeiro além do custo estimado (saldo, receita, lucro), backend, deploy e serviços pagos.
+
+
+---
+
+# Evolução v2 — planejamento (2026-11-24) · **PROPOSTA, aguardando aprovação**
+
+Pedido do usuário em 2026-11-24 20:05. **Nada aqui está autorizado para implementação.** Esta seção não muda as regras anteriores (CLAUDE.md, G1–G15, R1–R5, A6–A10, P1–P3, Q1–Q6, I1). Decisões novas: V1–V14 em `DECISOES.md` (todas pendentes). Arquitetura: `ARQUITETURA.md` §13. Wireframes e mapa de navegação: [RotaVHS Go · Evolução v2 — wireframes](https://claude.ai/artifact/NZi7SAvswZRgkugyTKA2rz) (link em `CONTINUAR-PROJETO.md`).
+
+## V2.1 Plataforma
+- **Só o PWA** até ele estar funcional, otimizado e validado em campo (fases F0–F9).
+- **Capacitor / Kotlin (Android)** só depois (fase F10). A arquitetura é preparada agora: regras de negócio em `core/` (TS puro) e telas sem acesso direto a APIs do navegador; tudo o que é do aparelho passa por **provedores** com adaptador PWA agora e Android depois.
+
+## V2.2 Diagnóstico do que existe (conferido em 2026-11-24)
+**Git e código.** O GitHub (`victor1923hsm/rotavhs-go`, main) está em `33d2322`. A pasta `D:\Projetos Claude\RotaVHS-Go` tem os mesmos 87 arquivos de `src/` (mesmos tamanhos), mas o `.git` dela **não tem nenhum commit** (HEAD aponta para `main` vazia, sem remoto) e faltam `.github/` e `.npmrc`. Arquivos soltos fora do Git: `rotavhs-go-publicacao.bundle` e `ferramentas/figma-telas-v2/`.
+
+**Testes no commit `33d2322`.** Vitest 220/220, scripts 68/68 e contraste 8/8 (tema Sol). Os E2E do histórico (146/146 e demais) não foram repetidos nesta etapa, para poupar RAM.
+
+| Situação | Funcionalidade | Observação |
+|---|---|---|
+| **Real** | Importação SPX (.xlsx/.csv) no aparelho, em Worker | erros específicos, coordenada suspeita (> 60 km), pacote repetido bloqueia (I1) |
+| **Real** | Conferência | agrupamento R3, Stop dividido, "?", busca por parada ou código |
+| **Real** | Banco local (Dexie v2), retomada, fila de gravação | situação por pacote (R1) |
+| **Real** | Finalizar com resumo e exclusão verificada | Q1/Q2 (inatividade e conferência) |
+| **Real** | Mapa MapLibre (OpenFreeMap) com pinos pela cor do Stop; cache de 60 MB + "Limpar mapas" (Q3) | sem trajeto (G5) |
+| **Real** | Posição real e GPS contínuo com o app visível | filtros de salto e precisão, estados (P2/P3), só na memória |
+| **Real** | Marcar Entregue / Sem sucesso por visita e por pacote, Desfazer 6 s, pular para a próxima | — |
+| **Real** | Navegar: abre Google Maps / Waze com o destino | revisão 11 |
+| **Real** | Custo estimado de combustível; temas Sol e Noite; offline do app | — |
+| **Incompleto** | Etapa 3 | aguarda a validação final no celular |
+| **Incompleto** | Wake Lock (tela acesa) | não implementado |
+| **Incompleto** | Telas Início, Histórico, Diagnóstico de GPS, Configurações completas | parte disso está em "Alertas e dados" e "Rotas finalizadas" |
+| **Incompleto** | Tema "claro" padrão | hoje: Sol (claro de alto contraste) e Noite |
+| **Simulado / DEMONSTRAÇÃO** | Otimização | vizinho mais próximo + 2-opt em **linha reta × 1,35**, rotulada DEMONSTRAÇÃO |
+| **Simulado / DEMONSTRAÇÃO** | Reotimização dinâmica por entrega e desvio, sugestão automática | P3 |
+| **Simulado / DEMONSTRAÇÃO** | Alerta de proximidade | P3 |
+| **Simulado / DEMONSTRAÇÃO** | Laboratório de GPS simulado; rota fictícia de exemplo | — |
+| **Inexistente** | Distância e trajeto pelas ruas | N2 |
+| **Inexistente** | Scanner, carregamento do veículo, memória geográfica, entregas próximas, financeiro (Q4), critérios de otimização | — |
+
+## V2.3 O que vem dos relatórios Spoke e Optiroute (só referência funcional)
+Fonte: `D:\Projetos Claude\Analise-APK\reports`. Nada de código, endpoint, chave ou algoritmo interno é copiado ou presumido: os dois apps otimizam **no servidor** e o algoritmo **não pôde ser determinado** (relatório técnico §3).
+
+| Ideia observada | De onde | Como entra no RotaVHS Go (implementação própria) |
+|---|---|---|
+| Reotimizar **só as pendentes**, preservando as concluídas | Optiroute (`optimizeOnlyPending`, `preserveCompletedSequences`), Spoke (REMAINING_STOPS) | prefixo fixo no motor; concluídas nunca entram na otimização |
+| "Reotimizar" × "Atualizar" (manter a ordem, só recalcular ETA) | Spoke | dois botões na Central de otimização |
+| Fixar parada (primeira / última / ordem manual) e "pular reordenação" | Spoke (FLEXIBLE/ORDERED/SKIPPED, FIRST/LAST) | restrições de posição no motor; ordem manual arrastando |
+| Origem = posição recente, com erro se a posição for velha | Spoke (StaleStartLocation) | origem só com leitura ≤ 30 s e ≤ 50 m (R5); senão pergunta |
+| Encaixe na rota, desvio com histerese, recálculo com intervalo mínimo, chegada | Optiroute (RouteSnapper) | pipeline próprio de GPS (ARQUITETURA §13.5), com limites calibrados em campo |
+| Optiroute **não filtra precisão** nem suaviza | relatório Optiroute | o Go filtra (precisão, idade, salto) e suaviza só a exibição |
+| Grupos no mapa e agrupamento | Spoke | agrupamento automático **de ordem** (nunca une Stops) |
+| Scanner de etiqueta; "carregar o veículo" | Spoke, Optiroute | fases F6 (código de barras local; ordem de carga = inversa da entrega) |
+| Erros tipados (sem rede, tempo esgotado, sem estrada) | Spoke | erros do `RoutingProvider` com volta ao estimado |
+| Spoke **não navega offline** e depende do SDK do Google | relatório Spoke | o Go navega pelo app externo e opera offline pela lista |
+
+## V2.4 Telas (17) — evolução proposta
+Barra inferior **mantida com 3 abas** (Pedidos · Rotas · Estatísticas, revisão 6) até a decisão V2. Wireframes no artefato.
+
+| # | Tela | Hoje | Fase | Acesso proposto |
+|---|---|---|---|---|
+| 1 | Início | não existe (Pedidos faz esse papel) | F0 | abertura do app: rota em andamento, importar, últimas rotas (V2) |
+| 2 | Rotas | existe (mapa + lista) | F2 | aba |
+| 3 | Importação SPX | existe (I1) | F0 | Início / Pedidos |
+| 4 | Conferência de endereços | existe (dentro de Importar) | F0 | depois da importação |
+| 5 | Central de otimização | não existe (botão OTIMIZAR) | F2 | Rotas → Otimizar |
+| 6 | Comparação antes e depois | parcial (planos SPX × otimizada) | F2 | Central → Comparar |
+| 7 | Mapa | existe (dentro de Rotas) | F1/F5 | Rotas, tela cheia |
+| 8 | Modo motorista | parcial (Pedidos) | F4 | Iniciar entregas |
+| 9 | Scanner de encomendas | não existe | F6 | Modo motorista / Carregamento |
+| 10 | Carregamento do veículo | não existe | F6 | Rotas, antes de iniciar |
+| 11 | Entregas próximas | não existe (só alerta DEMONSTRAÇÃO) | F3 | Modo motorista |
+| 12 | Memória geográfica | não existe | F6 | Configurações (V9) |
+| 13 | Histórico | parcial (Rotas finalizadas) | F6 | Estatísticas |
+| 14 | Financeiro | só custo estimado (Q4 planejado) | F7 | Estatísticas, **módulo opcional desligado** (V3) |
+| 15 | Estatísticas | existe | F7 | aba |
+| 16 | Diagnóstico de GPS | não existe (estados no mapa) | F1 | Configurações / toque no ícone de GPS |
+| 17 | Configurações | parcial ("Alertas e dados", Preferências) | F0 | engrenagem |
+
+Temas: **Claro**, **Escuro** e **Alta visibilidade (sol)** (V7). O "Sol" atual vira o de alta visibilidade (≥ 7:1, já verificado); Claro e Escuro com contraste ≥ 4,5:1 (WCAG AA) no texto e ≥ 7:1 no número da parada.
+
+## V2.5 Fases, com critérios de aceite
+Cada fase termina com testes reais, relatório e **pedido de aprovação**. Fases F1–F4 correspondem às antigas Etapas 4–7 (mesmos requisitos R1–R5, A6–A10, G7, G8), ampliadas.
+
+### F0 · Fundação dos provedores (refatoração sem mudar comportamento)
+- **Inclui:** as 10 interfaces (`ARQUITETURA.md` §13.3) e os adaptadores PWA **do que já existe** (localização web, Dexie, navegação externa, matriz estimada, otimizador local, notificação na tela); telas Início e Configurações como casca; temas Claro/Escuro/Alta visibilidade (V7); regra de lint: `screens/` e `components/` não importam APIs do navegador.
+- **Aceite:**
+  - os mesmos testes verdes (Vitest, scripts, E2E) **sem mudar comportamento**;
+  - nenhuma tela acessa `navigator.*`, `indexedDB` ou `fetch` direto (verificação automática);
+  - JS inicial ≤ 150 KB gzip;
+  - contraste verificado nos 3 temas;
+  - 0 requisições novas.
+
+### F1 · GPS real (antiga Etapa 4) + Diagnóstico de GPS
+- **Inclui:** pipeline completo (§13.5): aquisição adaptativa, validação, idade, anti-salto, suavização de exibição, estados; Wake Lock opcional; tela Diagnóstico (precisão, idade, frequência, descartes, permissão, Wake Lock) **só na memória**.
+- **Aceite:**
+  - parado, o ponto não "anda" mais que 10 m na tela (sequências gravadas fictícias);
+  - leitura com idade > 30 s nunca vira origem;
+  - salto > 55 m/s descartado;
+  - "sem sinal desde hh:mm" exibido;
+  - GPS pausa com o app fora da tela;
+  - nada gravado ou enviado (teste de rede);
+  - nenhuma promessa de segundo plano.
+
+### F2 · Motor de otimização local real + Central + Comparação (antiga Etapa 5)
+- **Inclui:** motor próprio (§13.4) com critérios **tempo, distância, combustível e inteligente**, agrupamento automático de ordem, origem na posição atual, prefixo de concluídas fixo, paradas fixadas (primeira/última), ordem manual (arrastar, inverter), "Atualizar" sem reordenar; Comparação antes × depois com a **mesma matriz**; tudo **estimado e rotulado** sem motor viário.
+- **Aceite:**
+  - Stop, pacotes e agrupamentos intactos em 100 % dos casos de teste;
+  - nunca pior que a ordem atual pelo mesmo modelo;
+  - concluídas e paradas fixadas nunca mudam de posição;
+  - ≤ 1 s com 150 paradas no S23 FE, em Worker, sem travar a tela;
+  - a ordem só muda com o toque;
+  - matriz assimétrica aceita (teste com matriz sintética de mão única).
+
+### F3 · Otimização dinâmica + Entregas próximas (antiga Etapa 6)
+- **Inclui:** reotimizar pendentes; sugestão por entrega e por desvio com anti-oscilação (G8); próxima protegida (< 200 m); tela Entregas próximas (pendentes num raio, em linha reta rotulada).
+- **Aceite:**
+  - 0 sugestões por tremor nos trajetos simulados;
+  - 0 mudanças sem toque;
+  - intervalo mínimo e ganho mínimo respeitados;
+  - recálculo manual sempre atende.
+
+### F4 · Modo motorista e execução (antiga Etapa 7)
+- **Inclui:** Modo motorista (parada atual com Stop enorme, botões ≥ 60 px, navegar, entregue/sem sucesso por pacote, próxima); alertas de proximidade reais (A6/A7); "tentar de novo"; finalização.
+- **Aceite:**
+  - nada marcado por proximidade;
+  - histórico intacto com desfazer e correção;
+  - alerta respeita A6 (uma vez por aproximação, 30 s entre alertas, sem alerta acima de ~40 km/h ou com precisão > 50 m).
+
+### F5 · Ruas reais (antiga N2), só com autorização G4 e consentimento por rota
+- **Inclui:** `RoutingProvider` e `DistanceMatrixProvider` pelas ruas (candidato: OpenRouteService com chave própria, V4); trajeto desenhado rotulado "pelas ruas"; encaixe do GPS na geometria (`MapMatchingProvider` local); desvio com limiar curto; volta automática ao estimado.
+- **Aceite:**
+  - só coordenadas saem (nunca códigos, endereços ou planilha), e só depois do consentimento da rota;
+  - sem rede, cota ou erro → estimado em ≤ 10 s, com o rótulo trocado;
+  - matriz guardada só durante a rota e apagada ao finalizar;
+  - consumo medido (requisições e KB por rota).
+
+### F6 · Operação: Scanner, Carregamento, Memória geográfica, Histórico
+- **Inclui:**
+  - **Scanner:** código de barras do SPX TN pela câmera, decodificação local (`BarcodeDetector` onde existir; biblioteca local só com V8). Acha o pacote e a parada; **não marca entrega sozinho**.
+  - **Carregamento:** ordem de carga inversa à de entrega, com conferência por leitura ou toque.
+  - **Memória geográfica:** correções de posição feitas por você, guardadas no aparelho (V9).
+  - **Histórico:** resumos sem dados identificáveis.
+- **Aceite:**
+  - leitura 100 % local (teste de rede);
+  - pacote lido de outra rota é avisado e nunca adicionado em silêncio;
+  - a memória obedece à regra de exclusão decidida em V9.
+
+### F7 · Estatísticas ampliadas + Financeiro opcional (Q4)
+- **Inclui:** módulo **desligado por padrão**, fora do fluxo de entrega: receita, abastecimento, despesas, km e lucro **estimado**; centavos inteiros.
+- **Aceite:**
+  - desligado, nenhuma tela de entrega muda;
+  - todos os valores rotulados estimado/informado;
+  - sem nomes, endereços ou códigos no histórico financeiro.
+
+### F8 · Instalação Android/iOS (antiga Etapa 8)
+Igual à Etapa 8.
+
+### F9 · Campo (antiga Etapa 9)
+Igual à Etapa 9, mais:
+- calibrar fator urbano, velocidade média, limiares de desvio e aproximação, critério inteligente;
+- medir bateria por hora com cada perfil de GPS.
+
+### F10 · Android nativo (Capacitor; Kotlin só onde precisar) — **depois do PWA validado**
+- **Inclui:**
+  - troca de adaptadores: localização em segundo plano com serviço em primeiro plano;
+  - notificações locais;
+  - armazenamento (o mesmo IndexedDB no WebView, ou SQLite se medido);
+  - câmera nativa no scanner.
+- **Aceite:**
+  - 0 mudanças em `core/` e nas telas;
+  - os mesmos testes do `core/`;
+  - o GPS em segundo plano é testado no aparelho antes de qualquer afirmação.
+
+**Dependências entre fases:** F0 → F1 → F2 → F3 → F4. F5 depende de F2 + V4. F6 e F7 podem vir depois de F4, em qualquer ordem. F8 e F9 vêm após F4. F10 vem após F9.
+
+## V2.6 Riscos
+- **Ruas reais dependem de terceiro:** cota, disponibilidade e termos podem mudar; a garantia continua sendo o modo estimado.
+- **Qualidade do OSM na sua região:** mão única e conversões podem estar faltando no mapa.
+- **Scanner:**
+  - `BarcodeDetector` não existe no Safari;
+  - o iOS exigiria uma biblioteca, que é uma dependência nova (V8).
+- **Memória geográfica × regra de exclusão:** guardar correções conflita com "apagar tudo ao finalizar" (V9).
+- **Escopo:** 17 telas é muito para um app de rua; a meta de desempenho (G14) e a simplicidade valem mais que completar telas.

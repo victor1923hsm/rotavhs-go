@@ -10,6 +10,7 @@ Colunas: `AT ID`, `Sequence`, `Stop`, `SPX TN`, `Destination Address`, `Bairro`,
 - `docs/PLANO-GERAL.md`: etapas 1–9, critérios de aceite, riscos e consumo.
 - `docs/ARQUITETURA.md`: pilha, camadas, dados, GPS, offline, roteamento e reaproveitamento do RotaVHS.
 - `docs/DECISOES.md`: decisões (aprovadas e pendentes). Uma decisão pendente não pode ser implementada.
+- `docs/DESIGN.md`: **o Figma é a fonte oficial e obrigatória do design**; linguagem visual registrada, adaptações aprovadas, temas e pendências visuais.
 
 ## Forma de trabalho (obrigatória)
 1. Trabalhar **por etapas**. Não implementar nada fora da etapa aprovada nem avançar sem aprovação explícita.

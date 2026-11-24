@@ -170,3 +170,25 @@ O proprietário correto é **victor1923hsm** (não victor1923moreira): repositó
 | Busca na rota | Pedidos/Rotas: "Buscar pelo código do pacote" além do número da parada |
 | Selo | "PROTÓTIPO DE TESTE · sua planilha, só neste aparelho" com rota real; "· dados fictícios" com a de exemplo ou a fictícia; só "PROTÓTIPO DE TESTE" na tela Importar |
 | Privacidade | Leitura no aparelho (Worker). Nenhum envio: o teste registra **só GET** para o próprio app e para as imagens do mapa, sem código, endereço ou coordenada nas URLs. **Service worker não guarda planilhas** (`globIgnores` xlsx/xls/csv; nenhuma regra de cache para elas; a do aparelho nem passa pela rede). Cartão "Seus dados ficam só neste aparelho" explica armazenamento e exclusão |
+
+
+## V1–V14 · Evolução v2 (propostas de 2026-11-24, **todas PENDENTES**)
+Pedido do usuário de 2026-11-24 20:05: só planejamento. Nenhuma destas decisões autoriza código, dependência, commit ou publicação. Detalhes: `PLANO-GERAL.md` (Evolução v2) e `ARQUITETURA.md` §13.
+
+| # | Assunto | Proposta | Por que precisa de decisão |
+|---|---|---|---|
+| V1 | Plataforma | PWA até a validação de campo (F9); Capacitor/Android só na F10 | definido pelo usuário; registrar como aprovado ao aprovar o plano |
+| V2 | Tela Início e barra inferior | Início como **tela de abertura** (rota em andamento, importar, últimas rotas), **sem** 4ª aba; barra continua Pedidos · Rotas · Estatísticas | a revisão 6 fixou 3 abas |
+| V3 | Financeiro (tela 14) | módulo opcional Q4, **desligado por padrão**, aberto por Estatísticas; sem aba Financeiro | a revisão 6 tirou a aba; Q4 prevê o módulo |
+| V4 | Ruas reais (F5) | OpenRouteService com **chave sua**, consentimento por rota, volta ao estimado; GraphHopper gratuito descartado (não comercial) | exige serviço externo (G4) e conta/chave |
+| V5 | Critérios de otimização | tempo (padrão), distância, combustível, inteligente; sem ruas, a tela avisa que tempo, combustível e inteligente são estimados | o "inteligente" usa pesos a calibrar |
+| V6 | Agrupamento automático de ordem | visitas a ≤ ~40 m viram bloco movido junto, sem unir Stops; pode ser desligado | muda a ordem proposta |
+| V7 | Temas | **Revisado em 2026-11-24:** Claro = cores do Figma original; Alta visibilidade = o mesmo desenho com texto preto, cinzas ≥ 7:1 e contorno nos cartões; Escuro = tokens Noite. Layout idêntico nos três (`DESIGN.md` §4) | qual é o padrão |
+| V8 | Scanner | `BarcodeDetector` nativo do navegador (Chrome Android); biblioteca local de leitura só se aprovada (dependência nova, necessária no iOS) | dependência nova |
+| V9 | Memória geográfica | guardar no aparelho **só as correções de posição que você fizer**, chaveadas por um resumo do endereço; apagar junto com a rota (padrão) **ou** manter até você limpar | conflita com a regra definitiva de exclusão ao finalizar |
+| V10 | Geocodificação | nenhuma por padrão; opcional, por ação sua, um endereço por vez (Nominatim, ≤ 1/s, sem dados pessoais além do endereço) | envia endereço a terceiro |
+| V11 | Wake Lock | opcional, ligado só no Modo motorista, com aviso de bateria | bateria |
+| V12 | Ordem manual | arrastar, inverter, fixar primeira/última; a ordem manual vira um plano ("manual") e a otimização a respeita | muda a sequência (com toque) |
+| V13 | Organização do código (F0) | pasta `providers/`, regras extraídas de `app/estado.ts` para `core/`, verificação automática de importações | refatoração ampla, sem mudar comportamento |
+| V14 | Git da pasta D: | a pasta do PC não tem commits; trazer o histórico do GitHub (`33d2322`) para o Git local antes da F0, sem enviar nada | mexe no `.git` local |
+| V15 | Barra inferior | Seguir o Figma: barra encostada no fim, 4 abas (Pedidos · Rotas · Estatísticas · Financeiro), aba ativa menta; no tema Escuro, fundo mais claro, linha menta no topo e brilho na aba ativa (`DESIGN.md` §3.6) | o app hoje usa a revisão 6 (3 abas) e a 12 (menu flutuante de vidro): confirmar se o Figma volta a valer nos dois pontos |

@@ -20,3 +20,15 @@ backups/
 e2e-saida/
 .DS_Store
 Thumbs.db
+
+# Locais (nunca no GitHub)
+_backup/
+builds/
+*.bundle
+*.apk
+*.aab
+*.keystore
+*.jks
+android/keystore.properties
+docs/referencia-visual/
+ferramentas/
