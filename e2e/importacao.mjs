@@ -155,6 +155,8 @@ async function main() {
       // Registra o que o toque atingiu (sem dados: só o tipo de elemento e o texto do botão).
       await page.evaluate(() => {
         window.__toques = []
+        if (window.__ouvindo) return
+        window.__ouvindo = true
         for (const t of ['touchstart', 'pointerdown', 'click'])
           document.addEventListener(t, (e) => {
             const el = e.target instanceof Element ? e.target.closest('button,a,input,label') ?? e.target : null
