@@ -28,7 +28,7 @@ async function abrir() {
       // Toque NATIVO na tela (adb), como o dedo: CSS px × devicePixelRatio (WebView de borda a borda).
       async tocar(x, y) {
         const dpr = await page.evaluate(() => devicePixelRatio)
-        await device.input.tap({ x: Math.round(x * dpr), y: Math.round(y * dpr) })
+        await device.shell(`input tap ${Math.round(x * dpr)} ${Math.round(y * dpr)}`)
       },
       fechar: async () => device.close(),
     }
@@ -113,6 +113,19 @@ async function main() {
       }
       if (!pronto) throw new Error('botão "Confirmar importação" não apareceu')
       if (c.repetido) {
+        // Antes de escolher: o toque precisa RESPONDER (etapa "Validando dados" com o motivo), nunca ficar mudo.
+        const b0 = await alvoDoToque(page, 'Confirmar importação')
+        await tocar(b0.x, b0.y)
+        let aviso = null
+        for (let i = 0; i < 20 && !aviso; i++) {
+          await esperar(250)
+          aviso = await page.evaluate(() => document.querySelector('[data-importacao-erro]')?.textContent ?? null)
+        }
+        if (!aviso || !aviso.includes('Validando dados')) throw new Error('tocar com pacote repetido pendente não deu resposta')
+        etapa('sem escolher o repetido: o app explicou o que falta')
+        const voltar = await alvoDoToque(page, 'Voltar')
+        await tocar(voltar.x, voltar.y)
+        await esperar(400)
         const rem = await alvoDoToque(page, 'Remover linha')
         if (!rem) throw new Error('pacote repetido sem a escolha "Remover linha"')
         await tocar(rem.x, rem.y)
