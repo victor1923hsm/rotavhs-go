@@ -22,13 +22,26 @@ async function abrir() {
     const webview = await device.webView({ pkg: PKG }, { timeout: 60_000 })
     const page = await webview.page()
     const info = String(await device.shell('dumpsys package com.google.android.webview | grep versionName')).trim().split('\n')[0]
-    log('Android:', device.model(), '· WebView', info)
+    log('Android:', device.model(), '· WebView', info, '·', String(await device.shell('wm size')).trim())
+    // Onde a WebView está na tela (pode não começar no topo: barra de status, versões antigas do WebView).
+    let caixa = null
+    const medirWebView = async () => {
+      await device.shell('uiautomator dump /sdcard/ui.xml')
+      const xml = String(await device.shell('cat /sdcard/ui.xml'))
+      const m = xml.match(/class="android\.webkit\.WebView"[^>]*bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"/)
+      caixa = m ? { x: Number(m[1]), y: Number(m[2]), w: Number(m[3]) - Number(m[1]), h: Number(m[4]) - Number(m[2]) } : { x: 0, y: 0, w: 0, h: 0 }
+      log('WebView na tela (px):', JSON.stringify(caixa))
+    }
     return {
       page,
-      // Toque NATIVO na tela (adb), como o dedo: CSS px × devicePixelRatio (WebView de borda a borda).
+      device,
+      // Toque NATIVO na tela (adb), como o dedo. CSS px → px da tela pela posição real da WebView.
       async tocar(x, y) {
-        const dpr = await page.evaluate(() => devicePixelRatio)
-        await device.shell(`input tap ${Math.round(x * dpr)} ${Math.round(y * dpr)}`)
+        if (!caixa) await medirWebView()
+        const { iw, ih } = await page.evaluate(() => ({ iw: innerWidth, ih: innerHeight }))
+        const sx = caixa.w ? caixa.w / iw : await page.evaluate(() => devicePixelRatio)
+        const sy = caixa.h ? caixa.h / ih : sx
+        await device.shell(`input tap ${Math.round(caixa.x + x * sx)} ${Math.round(caixa.y + y * sy)}`)
       },
       fechar: async () => device.close(),
     }
@@ -139,7 +152,18 @@ async function main() {
       etapa(`prévia: ${r.paradas} paradas, ${r.pacotes} pacotes`)
       const b = await alvoDoToque(page, 'Confirmar importação')
       etapa(`botão: ${b.desabilitado ? 'DESABILITADO' : 'habilitado'}${b.cobre ? `, COBERTO por ${b.cobre}` : ''}`)
+      // Registra o que o toque atingiu (sem dados: só o tipo de elemento e o texto do botão).
+      await page.evaluate(() => {
+        window.__toques = []
+        for (const t of ['touchstart', 'pointerdown', 'click'])
+          document.addEventListener(t, (e) => {
+            const el = e.target instanceof Element ? e.target.closest('button,a,input,label') ?? e.target : null
+            window.__toques.push(`${t}→${el ? el.tagName.toLowerCase() + (el.tagName === 'BUTTON' ? `(${el.textContent.trim().slice(0, 24)})` : '') : '?'}`)
+          }, { capture: true })
+      })
       await tocar(b.x, b.y)
+      await esperar(500)
+      etapa(`toque: ${(await page.evaluate(() => window.__toques.join(' ')).catch(() => 'página fechou')) || 'NADA chegou à página'}`)
       let caminho = ''
       for (let i = 0; i < 40; i++) {
         await esperar(250)
