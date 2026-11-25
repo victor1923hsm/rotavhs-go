@@ -26,10 +26,15 @@ async function abrir() {
     // Onde a WebView está na tela (pode não começar no topo: barra de status, versões antigas do WebView).
     let caixa = null
     const medirWebView = async () => {
-      await device.shell('uiautomator dump /sdcard/ui.xml')
-      const xml = String(await device.shell('cat /sdcard/ui.xml'))
-      const m = xml.match(/class="android\.webkit\.WebView"[^>]*bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"/)
-      caixa = m ? { x: Number(m[1]), y: Number(m[2]), w: Number(m[3]) - Number(m[1]), h: Number(m[4]) - Number(m[2]) } : { x: 0, y: 0, w: 0, h: 0 }
+      for (let tentativa = 1; tentativa <= 8 && !caixa; tentativa++) {
+        await device.shell('rm -f /sdcard/ui.xml; uiautomator dump /sdcard/ui.xml').catch(() => {})
+        const xml = String(await device.shell('cat /sdcard/ui.xml').catch(() => ''))
+        const m = xml.match(/class="android\.webkit\.WebView"[^>]*bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"/)
+        if (m) caixa = { x: Number(m[1]), y: Number(m[2]), w: Number(m[3]) - Number(m[1]), h: Number(m[4]) - Number(m[2]) }
+        else await esperar(1500)
+      }
+      // Sem a posição real, o toque cairia no lugar errado: o teste para (não dá falso resultado do app).
+      if (!caixa) throw new Error('não consegui medir a posição da WebView na tela (uiautomator)')
       log('WebView na tela (px):', JSON.stringify(caixa))
     }
     return {
@@ -39,8 +44,8 @@ async function abrir() {
       async tocar(x, y) {
         if (!caixa) await medirWebView()
         const { iw, ih } = await page.evaluate(() => ({ iw: innerWidth, ih: innerHeight }))
-        const sx = caixa.w ? caixa.w / iw : await page.evaluate(() => devicePixelRatio)
-        const sy = caixa.h ? caixa.h / ih : sx
+        const sx = caixa.w / iw
+        const sy = caixa.h / ih
         await device.shell(`input tap ${Math.round(caixa.x + x * sx)} ${Math.round(caixa.y + y * sy)}`)
       },
       fechar: async () => device.close(),
