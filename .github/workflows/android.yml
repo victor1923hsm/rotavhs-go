@@ -1,7 +1,7 @@
 # APK Android de TESTES (Capacitor), autorizado pelo usuário em 2026-11-25.
 # Roda só na branch v2-dev (ou à mão). NÃO publica no GitHub Pages nem na Play Store; a branch main não muda.
 # Assinatura de testes persistente: segredos ANDROID_KEYSTORE_BASE64 e ANDROID_KEYSTORE_SENHA (nunca no repositório).
-# Sem esses segredos o workflow só COMPILA e testa (para achar erros cedo): não entrega APK com outra chave
+# Sem esses segredos o workflow FALHA (nunca indica sucesso sem APK) e não entrega APK com outra chave
 # (isso obrigaria a desinstalar e perder os dados).
 name: APK Android de testes
 
@@ -30,17 +30,15 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Conferir os segredos de assinatura
-        id: chave
         env:
           KS: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
           SENHA: ${{ secrets.ANDROID_KEYSTORE_SENHA }}
         run: |
           if [ -z "$KS" ] || [ -z "$SENHA" ]; then
-            echo "::warning::Faltam os segredos ANDROID_KEYSTORE_BASE64 e ANDROID_KEYSTORE_SENHA: só compila e testa, sem entregar APK."
-            echo "tem=nao" >> "$GITHUB_OUTPUT"
-          else
-            echo "tem=sim" >> "$GITHUB_OUTPUT"
+            echo "::error::Faltam os segredos ANDROID_KEYSTORE_BASE64 e ANDROID_KEYSTORE_SENHA: sem eles não há APK."
+            exit 1
           fi
+          echo "$KS" | base64 -d > /dev/null || { echo "::error::ANDROID_KEYSTORE_BASE64 não é um base64 válido."; exit 1; }
 
       - uses: actions/setup-node@v4
         with:
@@ -73,35 +71,32 @@ jobs:
           KS: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
           ROTAVHS_KEYSTORE_SENHA: ${{ secrets.ANDROID_KEYSTORE_SENHA }}
         run: |
-          if [ -n "$KS" ]; then
-            export ROTAVHS_KEYSTORE_ARQUIVO="$RUNNER_TEMP/rotavhsgo-testes.keystore"
-            echo "$KS" | base64 -d > "$ROTAVHS_KEYSTORE_ARQUIVO"
-          fi
+          export ROTAVHS_KEYSTORE_ARQUIVO="$RUNNER_TEMP/rotavhsgo-testes.keystore"
+          echo "$KS" | base64 -d > "$ROTAVHS_KEYSTORE_ARQUIVO"
           gradle -p android assembleDebug --no-daemon -PrvVersionCode=${{ steps.versao.outputs.codigo }} -PrvVersionName=${{ steps.versao.outputs.nome }}
           rm -f "$RUNNER_TEMP/rotavhsgo-testes.keystore"
 
       - name: Conferir a assinatura e nomear o APK
-        if: steps.chave.outputs.tem == 'sim'
         id: apk
         run: |
           APK=android/app/build/outputs/apk/debug/app-debug.apk
           BT=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
           "$BT/apksigner" verify --print-certs "$APK" | tee certs.txt
           grep -qi "SHA-256 digest: $CERT_SHA256" certs.txt || { echo "::error::O APK não saiu com a chave de testes persistente."; exit 1; }
+          test -s "$APK" || { echo "::error::O APK não foi gerado."; exit 1; }
           NOME="RotaVHS-Go-${{ steps.versao.outputs.nome }}-${{ steps.versao.outputs.data }}-debug.apk"
           mkdir -p saida && cp "$APK" "saida/$NOME"
           sha256sum "saida/$NOME" | tee "saida/$NOME.sha256"
           echo "nome=$NOME" >> "$GITHUB_OUTPUT"
 
       - uses: actions/upload-artifact@v4
-        if: steps.chave.outputs.tem == 'sim'
         with:
+          if-no-files-found: error
           name: ${{ steps.apk.outputs.nome }}
           path: saida/
           retention-days: 30
 
       - name: Pré-lançamento de teste (link para baixar no celular)
-        if: steps.chave.outputs.tem == 'sim'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -115,3 +110,6 @@ jobs:
           gh release create "$TAG" saida/* --target "$GITHUB_SHA" --prerelease \
             --title "RotaVHS-Go ${{ steps.versao.outputs.nome }} (APK de testes, ${{ steps.versao.outputs.data }})" \
             --notes-file notas.md
+          # Só termina com sucesso se o APK estiver mesmo no pré-lançamento.
+          gh release view "$TAG" --json assets --jq '.assets[].name' | grep -qx "${{ steps.apk.outputs.nome }}" \
+            || { echo "::error::O APK não aparece no pré-lançamento."; exit 1; }
