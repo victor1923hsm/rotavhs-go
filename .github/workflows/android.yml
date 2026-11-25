@@ -1,13 +1,13 @@
 # APK Android de TESTES (Capacitor), autorizado pelo usuário em 2026-11-25.
-# Roda só na branch v2-dev (ou à mão). NÃO publica no GitHub Pages nem na Play Store; a branch main não muda.
+# Disparado à mão (gh workflow run android.yml --ref v2-dev). Antes de gerar e entregar o APK, roda o teste de
+# ponta a ponta no emulador Android (teste-android.yml); se ele falhar, não há APK.
+# NÃO publica no GitHub Pages nem na Play Store; a branch main não muda.
 # Assinatura de testes persistente: segredos ANDROID_KEYSTORE_BASE64 e ANDROID_KEYSTORE_SENHA (nunca no repositório).
 # Sem esses segredos o workflow FALHA (nunca indica sucesso sem APK) e não entrega APK com outra chave
 # (isso obrigaria a desinstalar e perder os dados).
 name: APK Android de testes
 
 on:
-  push:
-    branches: [v2-dev]
   workflow_dispatch:
 
 permissions:
@@ -22,7 +22,11 @@ env:
   CERT_SHA256: 1e70014ee3faed8b470016f69fc2fb8266199d5be46f80c70917df012fcff8c5
 
 jobs:
+  teste-android:
+    uses: ./.github/workflows/teste-android.yml
+
   apk:
+    needs: teste-android
     if: github.repository == 'victor1923hsm/rotavhs-go'
     runs-on: ubuntu-latest
     timeout-minutes: 40
