@@ -1,7 +1,8 @@
 # APK Android de TESTES (Capacitor), autorizado pelo usuário em 2026-11-25.
 # Roda só na branch v2-dev (ou à mão). NÃO publica no GitHub Pages nem na Play Store; a branch main não muda.
 # Assinatura de testes persistente: segredos ANDROID_KEYSTORE_BASE64 e ANDROID_KEYSTORE_SENHA (nunca no repositório).
-# Sem esses segredos o workflow PARA: não gera APK com chave diferente (isso obrigaria a desinstalar e perder os dados).
+# Sem esses segredos o workflow só COMPILA e testa (para achar erros cedo): não entrega APK com outra chave
+# (isso obrigaria a desinstalar e perder os dados).
 name: APK Android de testes
 
 on:
@@ -29,13 +30,16 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Conferir os segredos de assinatura
+        id: chave
         env:
           KS: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
           SENHA: ${{ secrets.ANDROID_KEYSTORE_SENHA }}
         run: |
           if [ -z "$KS" ] || [ -z "$SENHA" ]; then
-            echo "::error::Faltam os segredos ANDROID_KEYSTORE_BASE64 e ANDROID_KEYSTORE_SENHA (veja credenciais-android/LEIA-ME.txt no PC)."
-            exit 1
+            echo "::warning::Faltam os segredos ANDROID_KEYSTORE_BASE64 e ANDROID_KEYSTORE_SENHA: só compila e testa, sem entregar APK."
+            echo "tem=nao" >> "$GITHUB_OUTPUT"
+          else
+            echo "tem=sim" >> "$GITHUB_OUTPUT"
           fi
 
       - uses: actions/setup-node@v4
@@ -69,12 +73,15 @@ jobs:
           KS: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
           ROTAVHS_KEYSTORE_SENHA: ${{ secrets.ANDROID_KEYSTORE_SENHA }}
         run: |
-          export ROTAVHS_KEYSTORE_ARQUIVO="$RUNNER_TEMP/rotavhsgo-testes.keystore"
-          echo "$KS" | base64 -d > "$ROTAVHS_KEYSTORE_ARQUIVO"
+          if [ -n "$KS" ]; then
+            export ROTAVHS_KEYSTORE_ARQUIVO="$RUNNER_TEMP/rotavhsgo-testes.keystore"
+            echo "$KS" | base64 -d > "$ROTAVHS_KEYSTORE_ARQUIVO"
+          fi
           gradle -p android assembleDebug --no-daemon -PrvVersionCode=${{ steps.versao.outputs.codigo }} -PrvVersionName=${{ steps.versao.outputs.nome }}
-          rm -f "$ROTAVHS_KEYSTORE_ARQUIVO"
+          rm -f "$RUNNER_TEMP/rotavhsgo-testes.keystore"
 
       - name: Conferir a assinatura e nomear o APK
+        if: steps.chave.outputs.tem == 'sim'
         id: apk
         run: |
           APK=android/app/build/outputs/apk/debug/app-debug.apk
@@ -87,12 +94,14 @@ jobs:
           echo "nome=$NOME" >> "$GITHUB_OUTPUT"
 
       - uses: actions/upload-artifact@v4
+        if: steps.chave.outputs.tem == 'sim'
         with:
           name: ${{ steps.apk.outputs.nome }}
           path: saida/
           retention-days: 30
 
       - name: Pré-lançamento de teste (link para baixar no celular)
+        if: steps.chave.outputs.tem == 'sim'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
