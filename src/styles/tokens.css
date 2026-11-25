@@ -1,9 +1,10 @@
 /* Tokens semânticos (CLAUDE.md: nada de hex solto em componentes).
-   Valores = Figma (G9). Temas: Sol (padrão, contraste alto) e Noite.
+   Valores = Figma (G9, docs/DESIGN.md). Temas (V7, 2026-11-24): Claro (cores do Figma, padrão),
+   Alta visibilidade (o mesmo desenho, mais contraste) e Escuro.
    O verificador scripts/contraste.mjs lê ESTE arquivo: pares marcados com "contraste:" precisam de ≥ 7:1. */
 
 :root,
-[data-theme='sol'] {
+[data-theme='claro'] {
   --fundo: #ffffff;
   --superficie: #edf7f0;        /* cartões claros */
   --superficie-forte: #ffffff;
@@ -32,10 +33,52 @@
   /* Menu flutuante: vidro escuro (o texto branco continua com contraste alto sobre ele). */
   --vidro: rgb(23 27 25 / 0.84);
   --vidro-borda: rgb(255 255 255 / 0.1);
+  /* Barra inferior do Figma: preta, encostada no fim da tela (V15). */
+  --barra: #171b19;
+  --barra-texto: #ffffff;               /* contraste: --barra-texto/--barra */
+  --barra-borda: transparent;
+  --barra-ativa-sombra: 0 6px 16px -6px rgb(142 223 179 / 0.7);
+  --borda-cartao: 0 0 0 0 transparent;
   color-scheme: light;
 }
 
-[data-theme='noite'] {
+/* Alta visibilidade (sol forte): o mesmo desenho do Figma, com texto preto, cinzas mais escuros e contorno nos cartões. */
+[data-theme='alta'] {
+  --fundo: #ffffff;
+  --superficie: #e2f3e9;
+  --superficie-forte: #ffffff;
+  --texto: #000000;             /* contraste: --texto/--fundo */
+  --texto-suave: #2f3a34;       /* contraste: --texto-suave/--fundo */
+  --texto-fraco: #3f4a44;       /* contraste: --texto-fraco/--fundo */
+  --linha: #8f9c95;
+  --menta: #8edfb3;             /* contraste: --texto/--menta */
+  --menta-escura: #3f8f63;
+  --menta-texto: #173d28;       /* contraste: --menta-texto/--superficie */
+  --tinta: #000000;
+  --sobre-tinta: #8edfb3;       /* contraste: --sobre-tinta/--tinta */
+  --sobre-tinta-claro: #ffffff;
+  --aviso: #ffe9a8;
+  --sobre-aviso: #3d2c00;       /* contraste: --sobre-aviso/--aviso */
+  --erro-fundo: #fbdede;
+  --erro-texto: #5c1d1d;
+  --mapa-rua: #a9b3ae;
+  --mapa-fundo: #f4f6f5;
+  --stop-1: #f2cf3a;
+  --stop-2: #f49a4c;
+  --stop-3: #7fa9f0;
+  --stop-4: #b39cf0;
+  --sombra: 0 18px 40px -18px rgb(0 0 0 / 0.45);
+  --vidro: rgb(0 0 0 / 0.9);
+  --vidro-borda: rgb(255 255 255 / 0.14);
+  --barra: #000000;
+  --barra-texto: #ffffff;       /* contraste: --barra-texto/--barra */
+  --barra-borda: transparent;
+  --barra-ativa-sombra: 0 6px 16px -6px rgb(142 223 179 / 0.7);
+  --borda-cartao: 0 0 0 2px #000000;
+  color-scheme: light;
+}
+
+[data-theme='escuro'] {
   --fundo: #111412;
   --superficie: #1d2420;
   --superficie-forte: #232b26;
@@ -62,6 +105,13 @@
   --sombra: 0 18px 40px -18px rgb(0 0 0 / 0.6);
   --vidro: rgb(0 0 0 / 0.78);
   --vidro-borda: rgb(255 255 255 / 0.12);
+  /* Barra mais chamativa sobre o fundo preto (aprovada em 2026-11-24): fundo mais claro que a tela,
+     linha menta no topo e brilho na aba ativa. Formato, altura e nomes iguais ao Figma. */
+  --barra: #26302a;
+  --barra-texto: #f2f5f3;
+  --barra-borda: rgb(142 223 179 / 0.55);
+  --barra-ativa-sombra: 0 0 0 2px rgb(142 223 179 / 0.35), 0 6px 18px -4px rgb(142 223 179 / 0.6);
+  --borda-cartao: 0 0 0 1px #2e3832;
   color-scheme: dark;
 }
 

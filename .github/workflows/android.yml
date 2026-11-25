@@ -1,0 +1,108 @@
+# APK Android de TESTES (Capacitor), autorizado pelo usuário em 2026-11-25.
+# Roda só na branch v2-dev (ou à mão). NÃO publica no GitHub Pages nem na Play Store; a branch main não muda.
+# Assinatura de testes persistente: segredos ANDROID_KEYSTORE_BASE64 e ANDROID_KEYSTORE_SENHA (nunca no repositório).
+# Sem esses segredos o workflow PARA: não gera APK com chave diferente (isso obrigaria a desinstalar e perder os dados).
+name: APK Android de testes
+
+on:
+  push:
+    branches: [v2-dev]
+  workflow_dispatch:
+
+permissions:
+  contents: write # só para criar o pré-lançamento de teste com o APK
+
+concurrency:
+  group: apk-android
+  cancel-in-progress: false
+
+env:
+  # Impressão digital pública do certificado de testes (confere que o APK saiu com a chave persistente).
+  CERT_SHA256: 1e70014ee3faed8b470016f69fc2fb8266199d5be46f80c70917df012fcff8c5
+
+jobs:
+  apk:
+    if: github.repository == 'victor1923hsm/rotavhs-go'
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Conferir os segredos de assinatura
+        env:
+          KS: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          SENHA: ${{ secrets.ANDROID_KEYSTORE_SENHA }}
+        run: |
+          if [ -z "$KS" ] || [ -z "$SENHA" ]; then
+            echo "::error::Faltam os segredos ANDROID_KEYSTORE_BASE64 e ANDROID_KEYSTORE_SENHA (veja credenciais-android/LEIA-ME.txt no PC)."
+            exit 1
+          fi
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      # Os mesmos testes do PC (typecheck, Vitest, privacidade, publicação).
+      - run: npm test
+      - run: npm run build:nativo
+      - run: npx cap sync android
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.14.3'
+
+      - name: Versão do APK
+        id: versao
+        run: |
+          DATA=$(TZ=America/Sao_Paulo date +%Y-%m-%d)
+          echo "codigo=$((100 + GITHUB_RUN_NUMBER))" >> "$GITHUB_OUTPUT"
+          echo "nome=2.0.0-teste.${GITHUB_RUN_NUMBER}" >> "$GITHUB_OUTPUT"
+          echo "data=$DATA" >> "$GITHUB_OUTPUT"
+
+      - name: Compilar o APK debug (assinatura de testes)
+        env:
+          KS: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ROTAVHS_KEYSTORE_SENHA: ${{ secrets.ANDROID_KEYSTORE_SENHA }}
+        run: |
+          export ROTAVHS_KEYSTORE_ARQUIVO="$RUNNER_TEMP/rotavhsgo-testes.keystore"
+          echo "$KS" | base64 -d > "$ROTAVHS_KEYSTORE_ARQUIVO"
+          gradle -p android assembleDebug --no-daemon -PrvVersionCode=${{ steps.versao.outputs.codigo }} -PrvVersionName=${{ steps.versao.outputs.nome }}
+          rm -f "$ROTAVHS_KEYSTORE_ARQUIVO"
+
+      - name: Conferir a assinatura e nomear o APK
+        id: apk
+        run: |
+          APK=android/app/build/outputs/apk/debug/app-debug.apk
+          BT=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
+          "$BT/apksigner" verify --print-certs "$APK" | tee certs.txt
+          grep -qi "SHA-256 digest: $CERT_SHA256" certs.txt || { echo "::error::O APK não saiu com a chave de testes persistente."; exit 1; }
+          NOME="RotaVHS-Go-${{ steps.versao.outputs.nome }}-${{ steps.versao.outputs.data }}-debug.apk"
+          mkdir -p saida && cp "$APK" "saida/$NOME"
+          sha256sum "saida/$NOME" | tee "saida/$NOME.sha256"
+          echo "nome=$NOME" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.apk.outputs.nome }}
+          path: saida/
+          retention-days: 30
+
+      - name: Pré-lançamento de teste (link para baixar no celular)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="apk-teste-${{ github.run_number }}"
+          cat > notas.md <<'NOTAS'
+          APK Android de **testes** do RotaVHS-Go (branch v2-dev). Não é a versão da Play Store.
+          Instalação manual: baixe o arquivo .apk no celular e permita "instalar apps desconhecidos" para o navegador.
+          Atualizações futuras instalam por cima, sem perder os dados (mesma chave de testes).
+          O que está pronto, incompleto ou simulado: docs/ANDROID.md e docs/CONTINUAR-PROJETO.md.
+          NOTAS
+          gh release create "$TAG" saida/* --target "$GITHUB_SHA" --prerelease \
+            --title "RotaVHS-Go ${{ steps.versao.outputs.nome }} (APK de testes, ${{ steps.versao.outputs.data }})" \
+            --notes-file notas.md

@@ -408,7 +408,7 @@ function AvisoPrivacidade() {
       <p className="sub" style={{ margin: '6px 0 0' }}>
         A rota (paradas, endereços, códigos e suas marcações) fica guardada no navegador deste aparelho para continuar se o app fechar.
         Ao finalizar ou trocar de rota, esses detalhes são apagados e fica só o resumo (quantidades, km e custo estimados).
-        Você também pode excluir a rota em Estatísticas → Alertas e dados.
+        Você também pode excluir a rota em Estatísticas → Configurações.
       </p>
       <p className="rotulo" style={{ margin: '6px 0 0' }}>
         O mapa baixa imagens das ruas da região exibida (OpenFreeMap), sem endereços nem códigos. Maps e Waze só recebem o destino quando você toca neles.

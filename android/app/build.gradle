@@ -1,0 +1,74 @@
+apply plugin: 'com.android.application'
+
+android {
+    namespace = "io.github.victor1923hsm.rotavhsgo"
+    compileSdk = rootProject.ext.compileSdkVersion
+    defaultConfig {
+        applicationId "io.github.victor1923hsm.rotavhsgo"
+        minSdkVersion rootProject.ext.minSdkVersion
+        targetSdkVersion rootProject.ext.targetSdkVersion
+        // Versão do APK de testes: o workflow passa -PrvVersionCode e -PrvVersionName.
+        versionCode((project.findProperty('rvVersionCode') ?: '1') as Integer)
+        versionName(project.findProperty('rvVersionName') ?: '2.0.0-dev')
+        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+        aaptOptions {
+             // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
+             // Default: https://android.googlesource.com/platform/frameworks/base/+/282e181b58cf72b6ca770dc7ca5f91f135444502/tools/aapt/AaptAssets.cpp#61
+            ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
+        }
+    }
+    // Assinatura de testes PERSISTENTE (atualizar o APK sem perder os dados do aparelho).
+    // A chave NUNCA fica no repositório: no GitHub Actions vem dos segredos ANDROID_KEYSTORE_BASE64 e
+    // ANDROID_KEYSTORE_SENHA (veja docs/ANDROID.md). Sem a chave, o APK local usa a chave debug padrão do PC.
+    def chave = System.getenv('ROTAVHS_KEYSTORE_ARQUIVO')
+    signingConfigs {
+        testes {
+            if (chave && file(chave).exists()) {
+                storeFile file(chave)
+                storePassword System.getenv('ROTAVHS_KEYSTORE_SENHA')
+                keyAlias 'rotavhsgo-testes'
+                keyPassword System.getenv('ROTAVHS_KEYSTORE_SENHA')
+            }
+        }
+    }
+    buildTypes {
+        debug {
+            if (chave && file(chave).exists()) {
+                signingConfig signingConfigs.testes
+            }
+        }
+        release {
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+        }
+    }
+}
+
+repositories {
+    flatDir{
+        dirs '../capacitor-cordova-android-plugins/src/main/libs', 'libs'
+    }
+}
+
+dependencies {
+    implementation fileTree(include: ['*.jar'], dir: 'libs')
+    implementation "androidx.appcompat:appcompat:$androidxAppCompatVersion"
+    implementation "androidx.coordinatorlayout:coordinatorlayout:$androidxCoordinatorLayoutVersion"
+    implementation "androidx.core:core-splashscreen:$coreSplashScreenVersion"
+    implementation project(':capacitor-android')
+    testImplementation "junit:junit:$junitVersion"
+    androidTestImplementation "androidx.test.ext:junit:$androidxJunitVersion"
+    androidTestImplementation "androidx.test.espresso:espresso-core:$androidxEspressoCoreVersion"
+    implementation project(':capacitor-cordova-android-plugins')
+}
+
+apply from: 'capacitor.build.gradle'
+
+try {
+    def servicesJSON = file('google-services.json')
+    if (servicesJSON.text) {
+        apply plugin: 'com.google.gms.google-services'
+    }
+} catch(Exception e) {
+    logger.info("google-services.json not found, google-services plugin not applied. Push Notifications won't work")
+}

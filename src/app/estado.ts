@@ -17,7 +17,19 @@ import type { RotaImportada } from '@/features/importar/converter'
 import { ARQUIVO_EXEMPLO, ORDEM_SPX, PARADAS, POSICAO_TESTE } from '@/mock/rota-ficticia'
 
 export type { Fase }
-export type Tema = 'sol' | 'noite'
+/** Temas (V7, 2026-11-24): Claro = cores do Figma (padrão), Alta visibilidade (sol forte) e Escuro. */
+export type Tema = 'claro' | 'alta' | 'escuro'
+export const TEMAS: readonly { id: Tema; nome: string }[] = [
+  { id: 'claro', nome: 'Claro' },
+  { id: 'alta', nome: 'Alta visibilidade' },
+  { id: 'escuro', nome: 'Escuro' },
+]
+/** Lê o tema salvo. Converte os nomes antigos: "sol" → claro, "noite" → escuro. */
+export function temaSalvo(v: string | null): Tema {
+  if (v === 'alta' || v === 'escuro' || v === 'claro') return v
+  if (v === 'noite') return 'escuro'
+  return 'claro'
+}
 
 export const ROTA_EXEMPLO: RotaImportada = {
   fonte: 'exemplo', arquivo: ARQUIVO_EXEMPLO, paradas: [...PARADAS], ordemSpx: [...ORDEM_SPX],
@@ -166,6 +178,7 @@ interface Estado {
   recusarSugestao: () => void
   definirVeiculo: (v: Partial<Veiculo>) => void
   alternarTema: () => void
+  definirTema: (t: Tema) => void
   avisar: (texto: string, desfazer?: () => void) => void
   fecharAviso: () => void
   abrirBusca: (aberta: boolean) => void
@@ -173,9 +186,9 @@ interface Estado {
 
 function temaInicial(): Tema {
   try {
-    return localStorage.getItem('rotavhsgo.tema') === 'noite' ? 'noite' : 'sol'
+    return temaSalvo(localStorage.getItem('rotavhsgo.tema'))
   } catch {
-    return 'sol'
+    return 'claro'
   }
 }
 
@@ -453,7 +466,10 @@ export const useEstado = create<Estado>((set, get) => ({
 
   definirVeiculo: (v) => set((e) => ({ veiculo: { ...e.veiculo, ...v } })),
   alternarTema: () => {
-    const tema: Tema = get().tema === 'sol' ? 'noite' : 'sol'
+    const i = TEMAS.findIndex((t) => t.id === get().tema)
+    get().definirTema(TEMAS[(i + 1) % TEMAS.length]!.id)
+  },
+  definirTema: (tema) => {
     try {
       localStorage.setItem('rotavhsgo.tema', tema)
     } catch {

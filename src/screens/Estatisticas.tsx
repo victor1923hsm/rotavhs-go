@@ -1,6 +1,6 @@
 import { LinkFluido } from '@/app/navegacao'
-import { Moon, Sun } from 'lucide-react'
-import { resumoDaOrdem, useEstado } from '@/app/estado'
+import { Contrast, Moon, Sun } from 'lucide-react'
+import { TEMAS, resumoDaOrdem, useEstado } from '@/app/estado'
 import { custoEstimado } from '@/core/custo'
 import { duracao, numero, reais } from '@/core/formato'
 import { MapaEsquema } from '@/components/domain/MapaEsquema'
@@ -20,8 +20,8 @@ export function Estatisticas() {
       <div className="est-folha">
       <div className="est-painel" />
       <div className="est-trilho">
-        <button className="icone-botao" style={{ background: 'transparent', color: 'var(--sobre-tinta-claro)', marginBottom: 6 }} aria-label={tema === 'sol' ? 'Usar tema Noite' : 'Usar tema Sol'} onClick={alternarTema}>
-          {tema === 'sol' ? <Moon size={22} /> : <Sun size={22} />}
+        <button className="icone-botao" style={{ background: 'transparent', color: 'var(--sobre-tinta-claro)', marginBottom: 6 }} aria-label={`Tema: ${TEMAS.find((t) => t.id === tema)?.nome}. Tocar para trocar`} onClick={alternarTema}>
+          {tema === 'claro' ? <Sun size={22} /> : tema === 'alta' ? <Contrast size={22} /> : <Moon size={22} />}
         </button>
         <span>6</span>
         <span>7</span>
@@ -48,7 +48,7 @@ export function Estatisticas() {
               Rotas finalizadas · {resumos.length} →
             </LinkFluido>
           )}
-          <LinkFluido to="/estatisticas/preferencias" className="selo-estado est-finalizadas">Alertas e dados →</LinkFluido>
+          <LinkFluido to="/estatisticas/preferencias" className="selo-estado est-finalizadas">Configurações →</LinkFluido>
         </div>
       </div>
       <div className="est-roda">

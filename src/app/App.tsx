@@ -1,6 +1,6 @@
 import { Suspense, useEffect, type ReactNode } from 'react'
 import { BrowserRouter, Navigate, Route, Routes, useLocation } from 'react-router'
-import { BarChart3, Package, Route as IconeRota } from 'lucide-react'
+import { BarChart3, Package, Route as IconeRota, Wallet } from 'lucide-react'
 import { Aviso } from '@/components/ui/Aviso'
 import { useEstado } from '@/app/estado'
 import { ehFicticia } from '@/app/prototipo'
@@ -12,7 +12,7 @@ import { Rotas } from '@/screens/Rotas'
 import { Estatisticas } from '@/screens/Estatisticas'
 import { AvisoConferencia, GravacaoFalhou, RetomarRota } from '@/components/domain/Retomada'
 
-import { Custo, Importar, Preferencias, RotasFinalizadas, preCarregarTelas } from '@/app/sobDemanda'
+import { Custo, Financeiro, Importar, Preferencias, RotasFinalizadas, preCarregarTelas } from '@/app/sobDemanda'
 
 /** Enquanto o bloco da tela chega (raro: eles são pré-carregados). */
 const Sob = ({ children }: { children: ReactNode }) => (
@@ -23,16 +23,19 @@ const ROTULOS = [
   { rotulo: 'Pedidos', Icone: Package },
   { rotulo: 'Rotas', Icone: IconeRota },
   { rotulo: 'Estatísticas', Icone: BarChart3 },
+  { rotulo: 'Financeiro', Icone: Wallet },
 ] as const
 
-/** Menu flutuante (vidro escuro, cantos arredondados). O destaque da aba ativa desliza até a aba nova. */
-function MenuFlutuante() {
+/** Barra inferior do Figma (V15): encostada no fim da tela, quatro abas, aba ativa em menta.
+ *  No tema Escuro ela fica mais clara que a tela, com linha menta no topo (aprovado em 2026-11-24).
+ *  O destaque da aba ativa desliza até a aba nova. */
+function BarraInferior() {
   const { pathname } = useLocation()
   const ativa = ABAS.findIndex((a) => pathname === a || pathname.startsWith(a + '/') || (a === '/pedidos' && pathname === '/importar'))
   return (
     <nav className="nav" aria-label="Abas">
       {ativa >= 0 && <span className="aba-pilula" style={{ transform: `translateX(${ativa * 100}%)` }} aria-hidden="true" />}
-      {/* Camadas: vidro (nav) → destaque (pílula) → ícones e nomes por cima, também durante as transições. */}
+      {/* Camadas: barra (nav) → destaque (pílula) → ícones e nomes por cima, também durante as transições. */}
       <div className="abas">
         {ABAS.map((para, i) => {
           const { rotulo, Icone } = ROTULOS[i]!
@@ -72,10 +75,11 @@ export function App() {
             <Route path="/estatisticas/custo" element={<Sob><Custo /></Sob>} />
             <Route path="/estatisticas/rotas" element={<Sob><RotasFinalizadas /></Sob>} />
             <Route path="/estatisticas/preferencias" element={<Sob><Preferencias /></Sob>} />
+            <Route path="/financeiro" element={<Sob><Financeiro /></Sob>} />
             <Route path="*" element={<Navigate to="/pedidos" replace />} />
           </Routes>
         </main>
-        <MenuFlutuante />
+        <BarraInferior />
         <AlertaProximidade />
         <Aviso />
         <BuscaParada />

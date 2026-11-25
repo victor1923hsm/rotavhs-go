@@ -11,8 +11,11 @@ import { VitePWA } from 'vite-plugin-pwa'
 const COR_FUNDO = '#FFFFFF'
 const COR_TEMA = '#171B19'
 
-// Endereço base: '/' no PC (npm run preview); '/rotavhs-go/' no GitHub Pages (definido no workflow).
+// Endereço base: '/' no PC (npm run preview) e no Android; '/rotavhs-go/' no GitHub Pages (definido no workflow).
 const BASE = process.env.BASE_PATH ?? '/'
+
+// Modo "nativo" (vite build --mode nativo): o mesmo app, empacotado pelo Capacitor no APK Android de testes.
+// Sem service worker (os arquivos já estão dentro do APK) e com a planilha fictícia de teste junto.
 
 /** GitHub Pages não conhece as rotas do app: o 404.html (cópia do index.html) abre o app em qualquer endereço. */
 const pagina404 = (): Plugin => ({
@@ -29,13 +32,17 @@ const pagina404 = (): Plugin => ({
   },
 })
 
-export default defineConfig({
-  base: BASE,
+export default defineConfig(({ mode }) => {
+  const nativo = mode === 'nativo'
+  if (nativo) process.env.VITE_PROTOTIPO = '1'
+  return {
+  base: nativo ? '/' : BASE,
   plugins: [
     pagina404(),
     react(),
     tailwindcss(),
     VitePWA({
+      disable: nativo,
       registerType: 'autoUpdate',
       injectRegister: 'script-defer',
       includeAssets: ['favicon.svg', 'apple-touch-icon.png'],
@@ -94,4 +101,5 @@ export default defineConfig({
     environment: 'node',
     include: ['src/**/*.test.ts'],
   },
+  }
 })

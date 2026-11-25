@@ -119,13 +119,12 @@ Os tokens estão em `src/styles/tokens.css`.
 
 Layout, tamanhos e componentes são **idênticos** nos três temas.
 
-## 5. Pendências de decisão (ver `DECISOES.md`)
-- **V15 — barra inferior:**
-  - O Figma tem a barra encostada no fim e 4 abas, com Financeiro.
-  - A revisão 6 tirou a aba Financeiro.
-  - A revisão 12 fez o menu flutuante de vidro, que é o que o app usa hoje.
-  - Os wireframes revisados seguem o Figma, como pedido em 2026-11-24, até sua confirmação.
-- **V7 — temas:** a tabela acima substitui a proposta anterior, em que "Claro" era uma paleta nova.
+## 5. Decisões visuais (ver `DECISOES.md`)
+- **V15 — barra inferior: APROVADA em 2026-11-25** e implementada na F1 (`src/app/App.tsx` `BarraInferior`, `.nav` em `app.css`):
+  - barra do Figma encostada no fim, 4 abas com Financeiro;
+  - substitui a revisão 6 (3 abas) e o menu flutuante de vidro da revisão 12;
+  - no tema Escuro, fundo mais claro que a tela, linha menta no topo e brilho na aba ativa.
+- **V7 — temas:** implementados na F1 (`tokens.css`: `claro`, `alta`, `escuro`). Escolha em Estatísticas → Configurações ou pelo botão de tema da faixa de Estatísticas. Os nomes antigos guardados ("sol", "noite") são convertidos sozinhos.
 
 ## 6. Material de revisão
 - **Wireframes revisados das 17 telas e mapa de navegação, em PNG nos 3 temas:** pacote `RotaVHS-Go-wireframes-revisados-figma-png.zip` (2026-11-24).

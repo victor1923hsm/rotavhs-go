@@ -6,7 +6,8 @@ import type { AnchorHTMLAttributes, MouseEvent, ReactNode } from 'react'
 import { flushSync } from 'react-dom'
 import { useHref, useLocation, useNavigate } from 'react-router'
 
-export const ABAS = ['/pedidos', '/rotas', '/estatisticas'] as const
+/** As quatro abas do Figma (V15, 2026-11-25): Pedidos · Rotas · Estatísticas · Financeiro. */
+export const ABAS = ['/pedidos', '/rotas', '/estatisticas', '/financeiro'] as const
 /** Telas internas e a aba de onde saem. */
 const PAI: Record<string, string> = { '/importar': '/pedidos', '/estatisticas/custo': '/estatisticas', '/estatisticas/rotas': '/estatisticas', '/estatisticas/preferencias': '/estatisticas' }
 

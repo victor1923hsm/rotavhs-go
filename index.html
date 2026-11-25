@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="pt-BR" data-theme="sol">
+<html lang="pt-BR" data-theme="claro">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
@@ -9,10 +9,17 @@
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <title>RotaVHS Go</title>
     <script>
-      // Aplica o tema salvo antes do primeiro desenho (evita piscar). Padrão: Sol.
+      // Aplica o tema salvo antes do primeiro desenho (evita piscar). Padrão: Claro (cores do Figma).
+      // Nomes antigos: "sol" → claro, "noite" → escuro.
       try {
         var t = localStorage.getItem('rotavhsgo.tema')
-        document.documentElement.setAttribute('data-theme', t === 'noite' ? 'noite' : 'sol')
+        if (t === 'noite') t = 'escuro'
+        if (t !== 'alta' && t !== 'escuro') t = 'claro'
+        document.documentElement.setAttribute('data-theme', t)
+      } catch (e) {}
+      // Dentro do APK Android (Capacitor): marca a página para usar as margens seguras da tela.
+      try {
+        if (window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform()) document.documentElement.setAttribute('data-nativo', '')
       } catch (e) {}
     </script>
   </head>

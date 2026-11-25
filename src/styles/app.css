@@ -74,12 +74,12 @@ input {
   /* Só a área da tela anima nas transições; o menu e o selo ficam parados. */
   view-transition-name: tela;
 }
-/* Espaço livre embaixo para o conteúdo passar por trás do menu flutuante. */
+/* Espaço livre embaixo para o conteúdo não ficar atrás da barra inferior. */
 :root {
   /* Margem inferior do sistema. No navegador (aba do Chrome/Safari) a página não fica atrás da barra do sistema,
      mas alguns Android informam essa margem mesmo assim e o menu subia demais: só vale com o app instalado. */
   --inset-baixo: env(safe-area-inset-bottom, 0px);
-  --sob-menu: calc(100px + var(--inset-baixo));
+  --sob-menu: calc(96px + var(--inset-baixo));
 }
 .rolagem {
   position: absolute;
@@ -89,27 +89,27 @@ input {
   scrollbar-width: none;
 }
 
-/* ---------- Menu flutuante (vidro, cantos arredondados) ---------- */
+/* ---------- Barra inferior do Figma (V15): encostada no fim da tela, 4 abas ---------- */
 .nav {
   position: absolute;
-  left: 12px;
-  right: 12px;
-  bottom: calc(12px + var(--inset-baixo));
-  height: 64px;
-  padding: 6px;
-  border-radius: 26px;
-  background: var(--vidro);
-  -webkit-backdrop-filter: blur(18px) saturate(160%);
-  backdrop-filter: blur(18px) saturate(160%);
-  box-shadow: 0 14px 34px -12px rgb(0 0 0 / 0.5), inset 0 0 0 1px var(--vidro-borda);
-  display: flex;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: calc(76px + var(--inset-baixo));
+  border-radius: 26px 26px 0 0;
+  background: var(--barra);
+  box-shadow: inset 0 1px 0 var(--barra-borda);
   z-index: 30;
   view-transition-name: menu;
 }
 .abas {
   position: absolute;
-  inset: 6px;
+  left: 10px;
+  right: 10px;
+  top: 9px;
+  height: 58px;
   display: flex;
+  gap: 0;
   z-index: 1;
   view-transition-name: abas;
 }
@@ -117,14 +117,14 @@ input {
   position: relative;
   z-index: 1;
   flex: 1;
-  height: 52px;
-  border-radius: 20px;
+  height: 58px;
+  border-radius: 16px;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 3px;
-  color: var(--sobre-tinta-claro);
+  gap: 4px;
+  color: var(--barra-texto);
   font-size: 12px;
   text-decoration: none;
   transition: color 0.3s ease;
@@ -138,13 +138,13 @@ input {
 }
 .aba-pilula {
   position: absolute;
-  top: 6px;
-  left: 6px;
-  width: calc((100% - 12px) / 3);
-  height: 52px;
-  border-radius: 20px;
+  top: 9px;
+  left: 10px;
+  width: calc((100% - 20px) / 4);
+  height: 58px;
+  border-radius: 16px;
   background: var(--menta);
-  box-shadow: 0 6px 16px -6px rgb(142 223 179 / 0.7);
+  box-shadow: var(--barra-ativa-sombra);
   /* Leve efeito de mola ao deslizar até a aba nova. */
   transition: transform 0.5s cubic-bezier(0.34, 1.35, 0.5, 1);
   view-transition-name: aba-ativa;
@@ -1267,6 +1267,16 @@ html[data-direcao='aba-esquerda']::view-transition-old(tela) { animation-name: v
 @media (display-mode: browser) {
   :root { --inset-baixo: 0px; }
 }
+/* APK Android (Capacitor): a página ocupa a tela toda; as margens do sistema vêm do Capacitor (--safe-area-inset-*). */
+html[data-nativo] {
+  --inset-baixo: var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px));
+}
+html[data-nativo] .app {
+  padding-top: var(--safe-area-inset-top, env(safe-area-inset-top, 0px));
+}
+html[data-nativo] .selo {
+  top: calc(6px + var(--safe-area-inset-top, env(safe-area-inset-top, 0px)));
+}
 /* Depois de importar e conferir: chama a atenção para OTIMIZAR MINHA ROTA (sem animação com "reduzir movimento"). */
 .botao.destaque.pulsar {
   outline: 3px solid var(--menta-escura);
@@ -1278,4 +1288,75 @@ html[data-direcao='aba-esquerda']::view-transition-old(tela) { animation-name: v
 }
 @media (prefers-reduced-motion: reduce) {
   .botao.destaque.pulsar { animation: none; }
+}
+
+/* ---------- Financeiro (layout do Figma, V15) ---------- */
+.fin-destaque {
+  margin-top: 16px;
+  background: var(--menta);
+  color: var(--sobre-menta);
+  border-radius: 20px;
+  padding: 16px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  box-shadow: var(--borda-cartao);
+}
+.fin-valor {
+  font-size: 38px;
+  letter-spacing: -0.02em;
+}
+.fin-rodape {
+  display: flex;
+  justify-content: space-between;
+  font-size: 14px;
+  border-top: 1px solid rgb(23 27 25 / 0.18);
+  padding-top: 8px;
+}
+.fin-barras {
+  display: flex;
+  align-items: flex-end;
+  height: 88px;
+  margin-top: 10px;
+}
+.fin-dia {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+.fin-barra {
+  width: 28px;
+  border-radius: 8px;
+  background: var(--menta);
+}
+.fin-barra.hoje {
+  /* Hoje em destaque, como a barra preta do Figma (no tema Escuro ela fica clara). */
+  background: var(--texto);
+}
+.fin-linha {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 9px 0;
+}
+.fin-icone {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  background: var(--superficie);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+}
+.fin-par {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 12px;
+}
+.cartao {
+  box-shadow: var(--borda-cartao);
 }

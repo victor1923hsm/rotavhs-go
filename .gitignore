@@ -32,3 +32,10 @@ builds/
 android/keystore.properties
 docs/referencia-visual/
 ferramentas/
+
+# Assinatura do APK de testes: NUNCA no Git (fica só no PC e nos segredos do GitHub Actions)
+credenciais-android/
+*.keystore
+*.jks
+# Wrapper binário do Gradle: o CI usa o Gradle da versão em gradle-wrapper.properties (setup-gradle).
+android/gradle/wrapper/gradle-wrapper.jar

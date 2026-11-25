@@ -191,4 +191,21 @@ Pedido do usuário de 2026-11-24 20:05: só planejamento. Nenhuma destas decisõ
 | V12 | Ordem manual | arrastar, inverter, fixar primeira/última; a ordem manual vira um plano ("manual") e a otimização a respeita | muda a sequência (com toque) |
 | V13 | Organização do código (F0) | pasta `providers/`, regras extraídas de `app/estado.ts` para `core/`, verificação automática de importações | refatoração ampla, sem mudar comportamento |
 | V14 | Git da pasta D: | a pasta do PC não tem commits; trazer o histórico do GitHub (`33d2322`) para o Git local antes da F0, sem enviar nada | mexe no `.git` local |
-| V15 | Barra inferior | Seguir o Figma: barra encostada no fim, 4 abas (Pedidos · Rotas · Estatísticas · Financeiro), aba ativa menta; no tema Escuro, fundo mais claro, linha menta no topo e brilho na aba ativa (`DESIGN.md` §3.6) | o app hoje usa a revisão 6 (3 abas) e a 12 (menu flutuante de vidro): confirmar se o Figma volta a valer nos dois pontos |
+| V15 | Barra inferior | **APROVADA em 2026-11-25:** barra do Figma encostada no fim, 4 abas (Pedidos · Rotas · Estatísticas · Financeiro), aba ativa menta; no tema Escuro, fundo mais claro, linha menta no topo e brilho na aba ativa (`DESIGN.md` §3.6) | substitui a revisão 6 (3 abas) e a 12 (menu flutuante de vidro); as transições entre telas da revisão 12 continuam |
+
+## A1 · Aprovação oficial da Evolução v2 (2026-11-25)
+- **Aprovados:** os 17 wireframes revisados no padrão do Figma; **V15**; o início da implementação local (F0 → F1 → F2 → F3 → F4, incremental, testes a cada fase).
+- **Plataforma:**
+  - PWA mantido;
+  - **APK Android de testes com Capacitor** (um só sistema, código compartilhado);
+  - instalação manual no S23 FE;
+  - **sem Play Store**.
+- **Compilação do APK:** GitHub Actions (branch `v2-dev`, workflow `android.yml`), com assinatura de testes persistente em segredos do GitHub.
+- **Pré-lançamento:** é criado um pré-lançamento só com o APK, para baixar no celular.
+- **Proibido sem nova aprovação:**
+  - mexer no `main`;
+  - publicar no GitHub Pages;
+  - publicar na Play Store.
+- **Motor viário:** OpenRouteService é o candidato principal da F2. A chave **nunca** vai no código, nos arquivos versionados nem no build do Pages.
+- **Antes de ligar o roteamento externo:** documentar quais coordenadas saem, para quê e com que privacidade.
+- **Q4 (financeiro):** passa a ter a aba Financeiro (V15). Nesta versão a aba mostra só o custo **estimado** de combustível e as entregas; receitas, abastecimentos e despesas vêm na F4.

@@ -4,7 +4,7 @@
 import { useEffect, useState } from 'react'
 import { ArrowLeft } from 'lucide-react'
 import { LinkFluido } from '@/app/navegacao'
-import { useEstado } from '@/app/estado'
+import { TEMAS, useEstado } from '@/app/estado'
 import { descartarConferencia, lerConferencia, persistenciaAtual } from '@/app/persistencia'
 import { quando } from '@/components/domain/Retomada'
 import { CONFERENCIA_CARENCIA, CONFERENCIA_VALIDADE, inatividade } from '@/core/retencao'
@@ -65,7 +65,17 @@ export function Preferencias() {
     <div className="rolagem">
       <div className="linha">
         <LinkFluido to="/estatisticas" className="icone-botao" aria-label="Voltar"><ArrowLeft size={22} /></LinkFluido>
-        <h1 className="titulo">Alertas e dados</h1>
+        <h1 className="titulo">Configurações</h1>
+      </div>
+
+      <div className="secao">
+        <div className="t">Tema</div>
+        <div className="fichas">
+          {TEMAS.map((t) => (
+            <button key={t.id} className={`ficha ${e.tema === t.id ? 'ativa' : ''}`} aria-pressed={e.tema === t.id} onClick={() => e.definirTema(t.id)}>{t.nome}</button>
+          ))}
+        </div>
+        <p className="rotulo" style={{ marginTop: 6 }}>Alta visibilidade: o mesmo desenho, com mais contraste para sol forte.</p>
       </div>
 
       <div className="secao">
