@@ -14,6 +14,14 @@ on:
         description: 'Commit ou branch do app a testar'
         required: false
         default: ''
+      filtro:
+        description: 'Só os casos cujo nome contém este texto'
+        required: false
+        default: ''
+      repetir:
+        description: 'Repetir cada caso N vezes'
+        required: false
+        default: '1'
   workflow_call:
 
 permissions:
@@ -66,4 +74,4 @@ jobs:
           profile: pixel_6
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
-          script: adb install -r app/android/app/build/outputs/apk/debug/app-debug.apk && node teste/e2e/importacao.mjs android
+          script: adb install -r app/android/app/build/outputs/apk/debug/app-debug.apk && adb logcat -c && FILTRO="${{ inputs.filtro }}" REPETIR="${{ inputs.repetir || '1' }}" node teste/e2e/importacao.mjs android; r=$?; echo "== memória do aparelho"; adb shell cat /proc/meminfo | head -3; echo "== logcat (WebView, falhas, memória)"; adb logcat -d | grep -iE "FATAL|crash|renderer|lowmemorykiller|am_kill|Out of memory|chromium.*(error|fatal)|tombstone" | tail -40; exit $r

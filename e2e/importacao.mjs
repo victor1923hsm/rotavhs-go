@@ -115,7 +115,11 @@ async function main() {
     lista.push({ nome, arquivo, b64: readFileSync(new URL(`../test-fixtures/planilhas/${arquivo}`, import.meta.url)).toString('base64'), tipo: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
   }
   const resultados = []
-  for (const c of lista) {
+  // FILTRO=texto roda só os casos cujo nome contém o texto; REPETIR=n repete cada um (achar falhas intermitentes).
+  const filtro = process.env.FILTRO ?? ''
+  const vezes = Number(process.env.REPETIR ?? 1)
+  const escolhidos = lista.filter((c) => c.nome.includes(filtro)).flatMap((c) => Array.from({ length: vezes }, () => c))
+  for (const c of escolhidos) {
     const r = { caso: c.nome, ok: false, etapas: [] }
     const etapa = (s) => r.etapas.push(s)
     try {
