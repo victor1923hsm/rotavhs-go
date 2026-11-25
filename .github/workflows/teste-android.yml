@@ -6,6 +6,8 @@
 name: Teste Android (importação)
 
 on:
+  push:
+    branches: [v2-dev]
   workflow_dispatch:
     inputs:
       ref:
