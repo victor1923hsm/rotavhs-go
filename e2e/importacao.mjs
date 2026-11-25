@@ -115,7 +115,9 @@ async function main() {
     const etapa = (s) => r.etapas.push(s)
     try {
       await ir(page, '/importar')
-      await esperar(700)
+      // A tela Importar carrega sob demanda: espera o campo de arquivo existir (aparelho lento: até 20 s).
+      await page.waitForSelector('input[type=file]', { state: 'attached', timeout: 20_000 })
+      await esperar(300)
       await escolherArquivo(page, c.arquivo, c.b64, c.tipo)
       let pronto = null
       for (let i = 0; i < 60 && !pronto; i++) {

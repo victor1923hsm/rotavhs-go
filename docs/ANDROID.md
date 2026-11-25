@@ -8,6 +8,11 @@ Autorizado pelo usuário em 2026-11-25. **Experimental**, instalação manual no
 - O Capacitor só empacota o app num WebView Android (`android/`).
 - O que muda entre PWA e Android fica nos adaptadores de `platform/`. Exemplos: o GPS do navegador hoje e o GPS nativo quando existir (G1/N1, F3).
 
+## Teste no Android antes de cada APK
+- `teste-android.yml` sobe um emulador Android 14 com WebView real e instala o APK.
+- Roda `e2e/importacao.mjs android`: importa planilhas SPX sintéticas e toca "Confirmar importação" com toque nativo (adb), na posição real da WebView. Confere se a tela Rotas abre com as paradas certas.
+- O `android.yml` (manual: `gh workflow run android.yml --ref v2-dev`) só gera e entrega o APK se esse teste passar.
+
 ## Como é gerado
 1. Envio para a branch `v2-dev`.
 2. O workflow `.github/workflows/android.yml` (GitHub Actions) roda:

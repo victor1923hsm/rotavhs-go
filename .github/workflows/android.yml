@@ -9,6 +9,11 @@ name: APK Android de testes
 
 on:
   workflow_dispatch:
+    inputs:
+      teste:
+        description: 'Número do teste no nome da versão (2.0.0-teste.N); vazio = número da execução'
+        required: false
+        default: ''
 
 permissions:
   contents: write # só para criar o pré-lançamento de teste com o APK
@@ -67,7 +72,8 @@ jobs:
         run: |
           DATA=$(TZ=America/Sao_Paulo date +%Y-%m-%d)
           echo "codigo=$((100 + GITHUB_RUN_NUMBER))" >> "$GITHUB_OUTPUT"
-          echo "nome=2.0.0-teste.${GITHUB_RUN_NUMBER}" >> "$GITHUB_OUTPUT"
+          N="${{ inputs.teste }}"
+          echo "nome=2.0.0-teste.${N:-$GITHUB_RUN_NUMBER}" >> "$GITHUB_OUTPUT"
           echo "data=$DATA" >> "$GITHUB_OUTPUT"
 
       - name: Compilar o APK debug (assinatura de testes)
@@ -104,7 +110,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          TAG="apk-teste-${{ github.run_number }}"
+          TAG="apk-teste-${{ inputs.teste || github.run_number }}"
           cat > notas.md <<'NOTAS'
           APK Android de **testes** do RotaVHS-Go (branch v2-dev). Não é a versão da Play Store.
           Instalação manual: baixe o arquivo .apk no celular e permita "instalar apps desconhecidos" para o navegador.
