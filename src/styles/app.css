@@ -1360,3 +1360,68 @@ html[data-nativo] .selo {
 .cartao {
   box-shadow: var(--borda-cartao);
 }
+
+/* ---------- Janela por cima de tudo (correção 2.0.0-teste.6): confirmações e andamento ao abrir a rota ---------- */
+.janela-fundo {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  background: rgb(0 0 0 / 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  font-family: Inter, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  color: var(--texto);
+}
+.confirmar.janela {
+  width: 100%;
+  max-width: 390px;
+  background: var(--fundo);
+  box-shadow: var(--sombra), var(--borda-cartao);
+}
+.etapas-abrir {
+  list-style: none;
+  margin: 12px 0 4px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.etapas-abrir li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 16px;
+  color: var(--texto-fraco);
+}
+.etapas-abrir li.feita,
+.etapas-abrir li.agora {
+  color: var(--texto);
+}
+.etapas-abrir li.agora {
+  font-weight: 600;
+}
+.etapas-abrir li.falhou {
+  color: var(--erro-texto);
+  font-weight: 700;
+}
+.etapa-vazia {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  box-shadow: inset 0 0 0 2px var(--linha);
+}
+.girando {
+  animation: girar 0.9s linear infinite;
+}
+@keyframes girar {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .girando {
+    animation: none;
+  }
+}

@@ -1,6 +1,8 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import { createPortal } from 'react-dom'
+import { useNavigate } from 'react-router'
 import { LinkFluido, useIr } from '@/app/navegacao'
-import { ArrowLeft, FileSpreadsheet, Search, ShieldCheck, TriangleAlert } from 'lucide-react'
+import { ArrowLeft, Check, CircleX, FileSpreadsheet, LoaderCircle, Search, ShieldCheck, TriangleAlert } from 'lucide-react'
 import { ROTA_EXEMPLO, useEstado } from '@/app/estado'
 import { addressLine } from '@/core/address/address'
 import type { DraftStop } from '@/core/import/build'
@@ -12,8 +14,21 @@ import { rotaDaImportacao } from '@/features/importar/converter'
 import { lerArquivo } from '@/features/importar/ler'
 import type { Leitura } from '@/features/importar/leitura'
 import { ARQUIVO_FICTICIO, PLANILHA_FICTICIA, PROTOTIPO } from '@/app/prototipo'
-import { descartarConferencia, guardarConferencia, lerConferencia } from '@/app/persistencia'
+import { descartarConferencia, guardarConferencia, lerConferencia, persistenciaAtual } from '@/app/persistencia'
+import { ETAPAS_ABRIR, FalhaAbrir, abrirRotaImportada } from '@/features/importar/abrir'
 import type { RotaImportada } from '@/features/importar/converter'
+
+const esperar = (ms: number) => new Promise<void>((ok) => setTimeout(ok, ms))
+
+/** Janela por cima de tudo (fora da área que rola): sempre visível, onde quer que o botão esteja. */
+const Janela = ({ children }: { children: ReactNode }) => createPortal(<div className="janela-fundo">{children}</div>, document.body)
+
+interface Abrindo {
+  nova: RotaImportada
+  repetidos: number
+  etapa: number
+  falha?: { etapa: string; motivo: string }
+}
 
 const MOTIVO: Record<string, string> = { vazia: 'linha vazia', cabecalho_repetido: 'cabeçalho repetido', total: 'linha de total', sem_dados: 'sem dados' }
 
@@ -37,6 +52,8 @@ export function Importar() {
   const [retomadaEm, setRetomadaEm] = useState<number | null>(null)
   const [trocar, setTrocar] = useState<null | { nova: RotaImportada; depois: () => void }>(null)
   const [busca, setBusca] = useState('')
+  const [abrindo, setAbrindo] = useState<Abrindo | null>(null)
+  const navegar = useNavigate()
   const pacotes = useEstado((e) => e.pacotes)
   const fase = useEstado((e) => e.fase)
   const marcados = Object.values(pacotes).flat().filter((x) => x !== 'pendente').length
@@ -64,12 +81,45 @@ export function Importar() {
     setDecisoes([])
     setRetomadaEm(null)
   }
-  /** Troca a rota em uso só depois do seu "sim" (nada é apagado sem aviso). */
-  const usarRota = (nova: RotaImportada, depois: () => void) => {
-    if (emUso) setTrocar({ nova, depois })
-    else {
-      carregarRota(nova)
-      depois()
+  /** Troca a rota em uso só depois do seu "sim" (nada é apagado sem aviso). `trocar` carrega a rota nova. */
+  const usarRota = (nova: RotaImportada, trocarRota: () => void) => {
+    if (emUso) setTrocar({ nova, depois: trocarRota })
+    else trocarRota()
+  }
+
+  /** Confirma a importação em 5 etapas visíveis. Se uma falhar, diz qual e por quê, e deixa tentar de novo. */
+  const executar = async (nova: RotaImportada, repetidos: number) => {
+    setAbrindo({ nova, repetidos, etapa: 0 })
+    try {
+      await abrirRotaImportada(nova, repetidos, {
+        criar: () => {
+          if (useEstado.getState().rota !== nova) carregarRota(nova)
+        },
+        criada: () => useEstado.getState().rota === nova,
+        salvar: async () => {
+          const p = persistenciaAtual()
+          if (!p) return true // sem IndexedDB: a rota vale nesta visita (o app já avisa)
+          p.tentarDeNovo()
+          await Promise.race([p.aguardar(), esperar(8000)])
+          return useEstado.getState().gravacao !== 'falhou'
+        },
+        abrir: async () => {
+          void descartarConferencia()
+          useEstado.setState({ destacarOtimizar: true })
+          ir('/rotas')
+          await esperar(450)
+          if (location.pathname.endsWith('/rotas')) return true
+          navegar('/rotas') // sem animação, se a transição não terminou
+          await esperar(300)
+          return location.pathname.endsWith('/rotas')
+        },
+        progresso: (etapa) => setAbrindo((a) => (a ? { ...a, etapa } : a)),
+      })
+      avisar(`Rota importada: ${nova.paradas.length} paradas · ${nova.pacotes} pacotes`)
+      setAbrindo(null)
+    } catch (e) {
+      const falha = e instanceof FalhaAbrir ? { etapa: e.etapa, motivo: e.message } : { etapa: 'Abrindo rota', motivo: 'Erro interno. Toque em "Tentar de novo".' }
+      setAbrindo((a) => ({ nova, repetidos, etapa: a?.etapa ?? 0, falha }))
     }
   }
 
@@ -155,7 +205,8 @@ export function Importar() {
         <p className="rotulo" role="status" style={{ marginTop: 8 }}>Conferência retomada: suas escolhas foram guardadas às {new Date(retomadaEm).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}.</p>
       )}
       {trocar && (
-        <div className="confirmar" role="alertdialog" aria-label="Trocar a rota em uso" style={{ marginTop: 12 }}>
+        <Janela>
+        <div className="confirmar janela" role="alertdialog" aria-modal="true" aria-label="Trocar a rota em uso">
           <strong>Existe uma rota em uso</strong>
           <p className="sub" style={{ margin: '4px 0 10px' }}>
             {marcados > 0
@@ -163,10 +214,48 @@ export function Importar() {
               : 'Ela ainda não tem marcações. Ao continuar, ela será excluída do aparelho.'}
           </p>
           <div className="linha">
-            <button className="botao" onClick={() => { const t = trocar; setTrocar(null); carregarRota(t.nova); t.depois() }}>{marcados > 0 ? 'Encerrar e continuar' : 'Excluir e continuar'}</button>
+            <button className="botao" onClick={() => { const t = trocar; setTrocar(null); t.depois() }}>{marcados > 0 ? 'Encerrar e continuar' : 'Excluir e continuar'}</button>
             <button className="botao contorno" onClick={() => setTrocar(null)}>Cancelar</button>
           </div>
         </div>
+        </Janela>
+      )}
+      {abrindo && (
+        <Janela>
+          <div
+            className="confirmar janela"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Abrindo a rota"
+            data-importacao-erro={abrindo.falha ? `${abrindo.falha.etapa}: ${abrindo.falha.motivo}` : undefined}
+          >
+            <strong style={{ fontSize: 18 }}>{abrindo.falha ? 'Não consegui abrir a rota' : 'Abrindo a rota…'}</strong>
+            <ol className="etapas-abrir" aria-live="polite">
+              {ETAPAS_ABRIR.map((t, i) => {
+                const falhou = abrindo.falha && i === abrindo.etapa
+                const feita = i < abrindo.etapa
+                const agora = !abrindo.falha && i === abrindo.etapa
+                return (
+                  <li key={t} className={falhou ? 'falhou' : feita ? 'feita' : agora ? 'agora' : ''}>
+                    {falhou ? <CircleX size={18} /> : feita ? <Check size={18} /> : agora ? <LoaderCircle size={18} className="girando" /> : <span className="etapa-vazia" />}
+                    <span>{t}</span>
+                  </li>
+                )
+              })}
+            </ol>
+            {abrindo.falha && (
+              <>
+                <p role="alert" style={{ margin: '8px 0 12px' }}>
+                  Falhou em <b>{abrindo.falha.etapa}</b>: {abrindo.falha.motivo}
+                </p>
+                <div className="linha">
+                  <button className="botao" onClick={() => void executar(abrindo.nova, abrindo.falha?.etapa === 'Validando dados' ? repetidosAbertos : abrindo.repetidos)}>Tentar de novo</button>
+                  <button className="botao contorno" onClick={() => setAbrindo(null)}>Voltar</button>
+                </div>
+              </>
+            )}
+          </div>
+        </Janela>
       )}
 
       {erro && (
@@ -182,7 +271,7 @@ export function Importar() {
             Rota carregada agora: <b>{rota.arquivo}</b> ({rota.paradas.length} paradas{rota.fonte === 'exemplo' ? ', exemplo fictício' : ''}).
           </p>
           {rota.fonte !== 'exemplo' && (
-            <button className="botao contorno" style={{ marginTop: 10 }} onClick={() => usarRota(ROTA_EXEMPLO, () => ir('/rotas'))}>
+            <button className="botao contorno" style={{ marginTop: 10 }} onClick={() => usarRota(ROTA_EXEMPLO, () => { carregarRota(ROTA_EXEMPLO); ir('/rotas') })}>
               Voltar para a rota de exemplo
             </button>
           )}
@@ -281,18 +370,15 @@ export function Importar() {
               {repetidosAbertos === 1 ? 'Há 1 pacote repetido' : `Há ${repetidosAbertos} pacotes repetidos`} na planilha. Escolha acima qual linha remover para cada um antes de confirmar.
             </p>
           )}
+          {/* Nunca desabilitado: com pendência, o toque explica o que falta (etapa "Validando dados"). */}
           <button
             className="botao"
             style={{ marginTop: 16 }}
-            disabled={repetidosAbertos > 0}
-            onClick={() =>
-              usarRota(previa, () => {
-                void descartarConferencia()
-                useEstado.setState({ destacarOtimizar: true })
-                avisar(`Rota importada: ${previa.paradas.length} paradas · ${previa.pacotes} pacotes`)
-                ir('/rotas')
-              })
-            }
+            aria-disabled={repetidosAbertos > 0}
+            onClick={() => {
+              if (repetidosAbertos > 0) void executar(previa, repetidosAbertos)
+              else usarRota(previa, () => void executar(previa, 0))
+            }}
           >
             Confirmar importação →
           </button>
