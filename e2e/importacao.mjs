@@ -208,9 +208,13 @@ async function main() {
       if (!caminho.endsWith('/rotas')) throw new Error(`continuou em ${caminho} depois do toque (nada aconteceu)`)
       await esperar(900)
       await fecharPedidoGps(page, tocar)
-      const t1 = await texto(page)
-      const n = t1.match(/Revise (\d+) paradas/)
-      r.paradasNaRota = n ? Number(n[1]) : null
+      // A tela Rotas pode ainda estar na transição: espera o texto aparecer (até 8 s).
+      r.paradasNaRota = null
+      for (let i = 0; i < 32 && r.paradasNaRota === null; i++) {
+        const n = (await texto(page)).match(/Revise (\d+) paradas/)
+        if (n) r.paradasNaRota = Number(n[1])
+        else await esperar(250)
+      }
       if (c.pacotes !== undefined && r.pacotes !== c.pacotes) throw new Error(`pacotes: esperado ${c.pacotes}, prévia mostrou ${r.pacotes}`)
       if (r.paradasNaRota !== r.paradas) throw new Error(`Rotas mostra ${r.paradasNaRota} paradas; a prévia tinha ${r.paradas}`)
       etapa(`tela Rotas: ${r.paradasNaRota} paradas`)
