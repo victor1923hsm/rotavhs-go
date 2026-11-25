@@ -209,3 +209,32 @@ Pedido do usuário de 2026-11-24 20:05: só planejamento. Nenhuma destas decisõ
 - **Motor viário:** OpenRouteService é o candidato principal da F2. A chave **nunca** vai no código, nos arquivos versionados nem no build do Pages.
 - **Antes de ligar o roteamento externo:** documentar quais coordenadas saem, para quê e com que privacidade.
 - **Q4 (financeiro):** passa a ter a aba Financeiro (V15). Nesta versão a aba mostra só o custo **estimado** de combustível e as entregas; receitas, abastecimentos e despesas vêm na F4.
+
+## R1–R6 · Traçado real pelas ruas — **APROVADAS em 2026-11-25 19:43, com ajustes**
+| # | Decisão aprovada |
+|---|---|
+| R1 | OpenRouteService público como provedor inicial; arquitetura pronta para migrar para OSRM ou Valhalla em servidor próprio |
+| R2 | Envio **exclusivamente** das coordenadas necessárias à roteirização, com as duas autorizações (Configurações + por rota). Nunca nome, endereço textual, telefone, código SPX ou identificador de encomenda |
+| R3 | Veículo principal: **carro**. Arquitetura preparada para escolher moto no futuro (perfil no adaptador) |
+| R4 | Remoção **completa** das linhas retas: o mapa mostra só o traçado real pelas ruas |
+| R5 | Otimização aproximada offline permitida, claramente identificada; **prioridade para a última rota real guardada no aparelho** |
+| R6 | Chave do ORS configurada no app; orientação para criar a conta e a chave será dada depois |
+
+Requisitos adicionais do usuário (mesma data): auditoria do motor e comparação de algoritmos (§15 de `ARQUITETURA.md`), reformulação visual estilo Spoke (proposta V16, ainda **pendente**), desempenho e limites, validação com rotas reais, preservação do teste.7. **Nenhum código antes da aprovação da auditoria, do plano e das propostas visuais.**
+
+### Proposta original (registro)
+Detalhes, custos e limitações: `ARQUITETURA.md` §14. Nada implementado antes da aprovação.
+
+| # | Assunto | Proposta | Precisa de decisão porque |
+|---|---|---|---|
+| R1 | Provedor | **Começar pelo OpenRouteService público** (R$ 0, matriz + rota, mão única pelo OSM), atrás das interfaces; **servidor próprio** (Valhalla ou OSRM num VPS de ~€ 4,5–7/mês) como 2º passo se a cota, a qualidade ou a privacidade pedirem | envolve terceiro (A) ou custo mensal (B) |
+| R2 | Autorização de envio (G4) | só coordenadas (visitas pendentes + posição atual se pedida), com autorização nas Configurações + consentimento por rota | coordenadas das entregas saem do aparelho |
+| R3 | Veículo | carro ou moto? (moto pede Valhalla, com custo de moto) | muda o motor e o tempo estimado |
+| R4 | Linha reta no mapa | **remover** o tracejado "ordem, não é o caminho"; sem geometria, só pinos + aviso | muda o visual atual da tela Rotas |
+| R5 | Ordem sem serviço | permitir a ordem **aproximada** local (rotulada "sem ruas"), sem desenhar linhas | é uma estimativa, não o percurso real |
+| R6 | Chave do ORS | você cria a conta e a chave e digita no app (fica só no aparelho) | credencial sua |
+
+## V16 · Rota ativa estilo Spoke (proposta de 2026-11-25, **PENDENTE**)
+Canvas: "RotaVHS-Go — Proposta visual estilo Spoke (traçado real)" (8 telas). Mapa em tela cheia, traçado real (concluído / pendente / até a próxima), pinos numerados com a cor fixa da parada, cartão retrátil da próxima parada, botões flutuantes (minha localização, ver rota inteira, recalcular), alternância Mapa/Lista no topo, toque no pino abre a parada, 3 temas.
+- **Variante A (recomendada):** barra inferior do Figma encostada (V15) mantida; o cartão da próxima parada é o painel flutuante.
+- **Variante B:** barra inferior flutuante (pedida como "menu de seleção inferior flutuante"). **Reabre a V15** e a revisão 12 (menu flutuante de vidro foi substituído pela V15).

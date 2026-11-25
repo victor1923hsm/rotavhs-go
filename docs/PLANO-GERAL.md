@@ -294,7 +294,7 @@ Cada fase termina com testes reais, relatório e **pedido de aprovação**. Fase
   - histórico intacto com desfazer e correção;
   - alerta respeita A6 (uma vez por aproximação, 30 s entre alertas, sem alerta acima de ~40 km/h ou com precisão > 50 m).
 
-### F5 · Ruas reais (antiga N2), só com autorização G4 e consentimento por rota
+### F5 · Ruas reais (antiga N2), só com autorização G4 e consentimento por rota — **requisito OBRIGATÓRIO desde 2026-11-25** (traçado real, `ARQUITETURA.md` §14, decisões R1–R6; critérios de aceite em §14.7, sem dados simulados)
 - **Inclui:** `RoutingProvider` e `DistanceMatrixProvider` pelas ruas (candidato: OpenRouteService com chave própria, V4); trajeto desenhado rotulado "pelas ruas"; encaixe do GPS na geometria (`MapMatchingProvider` local); desvio com limiar curto; volta automática ao estimado.
 - **Aceite:**
   - só coordenadas saem (nunca códigos, endereços ou planilha), e só depois do consentimento da rota;

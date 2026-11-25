@@ -330,3 +330,234 @@ Para 1 veículo e ≤ 250 paradas, um motor próprio em TS no Worker é suficien
   - `StorageProvider`, se medido.
 - **Kotlin** só em plugin próprio quando nenhum plugin aberto atender.
 - **Não muda:** `core/`, telas e regras. Os testes do `core/` rodam iguais.
+
+## 14. Traçado real pelas ruas (requisito obrigatório de 2026-11-25) — **decisões R1–R6 aprovadas em 2026-11-25 com ajustes (`DECISOES.md`); implementação aguardando aprovação do plano §15**
+
+**Requisito do usuário:**
+- Nada de linhas retas ligando as paradas no mapa.
+- O traçado acompanha ruas, avenidas, curvas, cruzamentos e rotatórias, como no Spoke.
+- Respeita mão única, acessos e restrições.
+- Origem na posição atual; distância total e tempo estimados.
+- Trechos concluídos e pendentes diferenciados; destaque até a próxima entrega.
+- Recalcula os trechos pendentes ao reotimizar.
+- Até 500 paradas.
+- Geometria guardada no aparelho para consulta offline.
+- Sem serviço disponível, **nunca** mostra linha reta como se fosse percurso.
+- Sem enviar dados pessoais nem coordenadas sem autorização.
+- **Não vale como concluído com dados simulados.**
+
+### 14.1 Três responsabilidades separadas
+| # | Responsabilidade | Interface | Onde roda | O que usa |
+|---|---|---|---|---|
+| 1 | **Matriz** de distância e tempo pela malha viária (assimétrica: mão única conta) | `DistanceMatrixProvider` | serviço de roteamento (§14.3) | coordenadas das visitas + posição atual |
+| 2 | **Otimização** da sequência | `OptimizationEngine` (já existe: `core/otimizacao/motor.ts`) | no aparelho (Worker) | só a matriz e as regras (concluídas fixas, fixadas, grupos) |
+| 3 | **Geometria** do percurso para o mapa | `RouteGeometryProvider` (novo) | serviço de roteamento; **cache no aparelho** | pares consecutivos da ordem escolhida |
+
+- A otimização **não** depende da geometria.
+- O traçado de cada trecho só é pedido **depois** que a ordem é aceita, com o toque do usuário.
+- O mesmo serviço pode atender 1 e 3, mas os adaptadores são separados, para trocar de provedor sem mexer no motor.
+
+### 14.2 Como funciona no app
+- **Origem:** nó 0 = posição atual (leitura ≤ 30 s e precisão ≤ 50 m). Sem posição confiável: 1ª parada pendente.
+- **Matriz:**
+  - pedida em blocos (ex.: 50 × 70), montada no aparelho e guardada com a rota em uso;
+  - ao reotimizar, só a **linha da posição atual** é pedida de novo (1 × N), não a matriz inteira.
+- **Trechos (legs):** a geometria é guardada **por par** (origem → destino), com a chave = coordenadas arredondadas + perfil + versão dos dados do mapa.
+  - Ao reordenar, só os pares novos são pedidos; os que não mudaram vêm do cache.
+  - Concluídos: cor apagada, contínua.
+  - Pendentes: cor da rota.
+  - Até a próxima entrega: destaque, mais grosso e com borda.
+- **Totais:** distância e tempo somados dos trechos pendentes, **pelas ruas**. ETA = tempo pelas ruas + parada por entrega, sempre rotulado "estimado".
+- **Offline:** a geometria e a matriz da rota em uso ficam no IndexedDB e o mapa usa o que estiver guardado.
+  - Trecho sem geometria guardada: **não** é desenhado.
+  - Nesse caso, o mapa mostra só os pinos e o aviso "Trajeto pelas ruas indisponível para N trechos".
+  - A lista continua funcionando.
+  - **O tracejado reto atual ("ordem, não é o caminho") sai do mapa.**
+- **Sem serviço:** a ordem pode ser calculada pela estimativa local (linha reta × fator urbano), sempre rotulada **"aproximada, sem ruas"**. Nenhuma linha reta é desenhada.
+- **Privacidade:** a rota em uso guarda matriz e geometria, apagadas ao finalizar, como os endereços (regra definitiva da Etapa 3).
+
+### 14.3 Motores avaliados (conferido em 2026-11-25)
+| Motor | Matriz | Geometria | Restrições | Observações |
+|---|---|---|---|---|
+| **OSRM** (C++, código aberto) | `/table`, rapidíssimo | `/route` | mão única e restrições de conversão do OSM; lado da rua por `approaches` | **Prós:** o mais rápido. **Contras:** pré-processamento pesado em memória (planeta inteiro: ~130 GB só para carro); perfil por pré-processamento (trocar o perfil = reprocessar); limite de matriz configurável (padrão 100 × 100) |
+| **Valhalla** (C++, código aberto) | `sources_to_targets` | `/route` | as do OSM; **custos dinâmicos** (carro, **moto**, caminhão) sem reprocessar; lado da rua | **Prós:** pouca memória (blocos em disco). **Contras:** matriz mais lenta que a do OSRM; limites de locais configuráveis (padrão baixo, ajustável) |
+| **GraphHopper** (Java, código aberto) | **não** na versão aberta (a Matrix API é comercial) | `/route` | as do OSM | **Contras:** API paga para uso comercial (gratuita só não comercial). Para matriz própria, só com código extra |
+| **OpenRouteService** (sobre GraphHopper, código aberto + serviço público gratuito) | `/matrix` | `/directions` | as do OSM | **Público:** matriz até 3.500 pares por pedido e 500 pedidos/dia; rota até 50 pontos por pedido e 2.000 pedidos/dia; sem garantia de serviço. **Hospedado por você:** sem esses limites |
+
+Todos usam dados do **OpenStreetMap**. A qualidade de mão única, retornos e acessos depende de como a sua região está mapeada no OSM; isso precisa ser conferido com rotas reais.
+
+### 14.4 Opções de hospedagem e custos
+| Opção | Custo | Privacidade (o que sai) | Limites para 500 paradas | Trabalho de manutenção |
+|---|---|---|---|---|
+| **A. OpenRouteService público** (chave sua, digitada no app, nunca no código) | **R$ 0** | coordenadas das paradas e da posição vão para a HeiGIT (Alemanha); nada de endereço ou código | **Matriz:** 501 × 501 ≈ 251 mil pares ≈ 72 pedidos (cabe em 500/dia, cerca de 6 rotas cheias por dia; ~2 min por causa de 40/min). **Geometria:** ≈ 11 pedidos | nenhum |
+| **B. Servidor próprio (VPS)** com OSRM ou Valhalla e o recorte OSM da sua região | **≈ € 4,5 a € 7/mês** (VPS de 4–8 GB na Hetzner, preços de 2026 a reconferir) | coordenadas vão **só para o seu servidor**; sem registros de acesso | sem cota: 500 × 500 em um pedido | atualizar o mapa OSM (ex.: semanal, automatizável no GitHub Actions), HTTPS, chave de acesso, reiniciar se cair |
+| **C. GraphHopper / Google (pagos)** | GraphHopper a partir de ~€ 69/mês; Google por chamada | coordenadas ao provedor | — | — (fora: "sem serviço pago" e custo alto) |
+| **D. Roteamento no próprio celular** (nativo, futuro) | R$ 0 por uso | nada sai do aparelho | depende do celular | grande: motor nativo e mapa da região baixado (centenas de MB). Só depois do PWA validado (F10) |
+
+**Notas:**
+- **No seu PC, não.** Não é possível hospedar no PC (16 GB, sem Docker e sem servidor ligado o tempo todo, pelas regras do projeto). E o celular só alcançaria o PC na mesma rede.
+- **Pré-processamento do recorte regional:** pode rodar no próprio GitHub Actions (máquinas de 16 GB) e só os dados prontos vão para o VPS.
+- **Moto:** se a entrega é feita de moto, só o Valhalla tem custo de moto pronto. O OSRM e o ORS usam o perfil de carro, salvo perfil próprio.
+
+### 14.5 Desempenho com 500 paradas (a medir no S23 FE)
+| Item | Estimativa e ajuste necessário |
+|---|---|
+| Matriz | 501 × 501 × 2 números ≈ 2 MB em Float32 no aparelho; download de ~3–4 MB de JSON (dados móveis: só ao calcular) |
+| Motor | a versão atual recalcula o custo inteiro a cada tentativa: até ~250 paradas ainda cabe no tempo; **para 500, falta trocar para cálculo incremental (delta)** e listas de vizinhos. Meta: ≤ 2 s no Worker |
+| Geometria | ~500 trechos × ~40 pontos ≈ 20 mil pontos; guardar como polilinha compacta (~0,5 MB) |
+| Mapa | pinos hoje são marcadores HTML: **para 500, trocar por camada de símbolos do MapLibre** (um único objeto), traçado como 3 camadas (concluído, pendente, próximo) |
+
+### 14.6 Privacidade (antes de ligar qualquer serviço)
+- **O que sai:**
+  - só pares latitude/longitude das visitas pendentes e da posição atual, sem endereço, código SPX, nome, número da parada ou nome do arquivo;
+  - os pontos vão numa ordem que **não** é a da etiqueta: os índices são internos ao pedido.
+- **Quando:**
+  - só com a autorização G4 dada uma vez nas Configurações;
+  - **e** o consentimento por rota ("Calcular pelas ruas" na Central de otimização);
+  - a posição atual só vai junto se o GPS estiver ligado e você pedir "partir de onde estou".
+- **Para quem:** só o provedor escolhido (A ou B), mostrado na tela.
+- **Guardado:** matriz e geometria só no aparelho, apagadas ao finalizar a rota.
+- **Chave:** digitada no app e guardada no aparelho. Nunca no Git, no build do Pages nem no APK.
+
+### 14.7 Critérios de aceite (sem dados simulados)
+1. **Rota real:** importada da planilha e calculada pelo provedor real; o traçado segue as ruas no mapa do S23 FE (conferência visual por você em pelo menos 3 rotas reais).
+2. **Mão única:** em pelo menos 2 casos reais conhecidos por você, a matriz não é simétrica (A → B ≠ B → A) e o traçado respeita o sentido.
+3. **Origem:** a posição atual é usada como origem e o primeiro trecho sai dela.
+4. **Visual dos trechos:** concluídos, pendentes e próximo visualmente diferentes; ao marcar uma entrega, o destaque passa ao trecho seguinte.
+5. **Reotimização:** só os trechos novos são pedidos ao serviço (contagem de pedidos registrada).
+6. **Offline:** com a rota calculada, em modo avião, o mapa mostra o mesmo traçado guardado.
+7. **Sem rede nem cache:** nenhuma linha no mapa e o aviso visível; a lista funciona.
+8. **500 paradas:**
+   - matriz completa obtida;
+   - motor ≤ 2 s no Worker;
+   - mapa fluido (rolagem e zoom sem travar) no S23 FE;
+   - tempo e consumo de dados medidos e registrados.
+9. **Privacidade:** registro dos pedidos de rede só com coordenadas (sem endereço nem código); nada sai sem as duas autorizações.
+
+## 15. Auditoria do motor de otimização e plano (2026-11-25) — **aguardando aprovação**
+
+### 15.1 O que o teste.7 usa hoje (auditoria do código)
+1. **Algoritmo de produção:**
+   - `src/core/ordem.ts` (`ordemEstimada`), chamado por `src/app/estado.ts`;
+   - o motor da F2 (`core/otimizacao/motor.ts`) **ainda não está ligado** à interface.
+2. **Só vizinho mais próximo + 2-opt.** Não há Or-opt, 3-opt, várias soluções candidatas nem perturbação.
+   - O 2-opt para no primeiro ótimo local.
+   - O vizinho mais próximo deixa paradas "para trás", e as voltas para buscá-las são os retornos que você notou.
+3. **Calcula em linha reta × 1,35.** Ignora mão única, rotatórias, rios e vias sem ligação.
+   - A ordem "boa em linha reta" fica pior pelas ruas.
+4. **Ponto de partida:** numa rota importada, sem GPS na demonstração, a partida fica **fixa na 1ª parada da ordem da SPX**, onde quer que ela esteja.
+5. **"Nunca pior que a atual"** compara só com a ordem de entrada, na mesma linha reta. Não protege contra uma ordem ruim pelas ruas.
+6. **Motor F2 (não ligado):**
+   - é bom até 250 paradas;
+   - com 500, o limite de 600 ms estoura no meio da inserção e as paradas restantes caem em qualquer lugar: resultado 60–120% pior;
+   - recalcula o custo inteiro a cada tentativa (O(n) por movimento), o que é lento para rotas grandes.
+
+### 15.2 Bancada comparativa (dados FICTÍCIOS, mesma matriz, mesma origem, término livre)
+- **Malha viária sintética:**
+  - grade de 7 × 7 km, quarteirões de 100 m;
+  - avenidas a 40 km/h e ruas a 22 km/h;
+  - ~35% das ruas locais em mão única e alguns quarteirões sem passagem;
+  - paradas agrupadas em bairros, como numa rota SPX;
+  - matriz pelo menor tempo (Dijkstra), **52–60% dos pares assimétricos**.
+- **Amostra:** 3 instâncias por tamanho.
+- **Medidas:**
+  - diferença média para a melhor solução encontrada por qualquer método (minutos pelas ruas);
+  - tempo de processamento (CPU de nuvem com 2 vCPU, **não é o S23 FE**);
+  - "ret." = voltas a regiões de 500 m já deixadas.
+- **Teste.7:** calcula em linha reta e é **avaliado** na matriz pelas ruas.
+
+| Algoritmo | 50 | 100 | 250 | 500 |
+|---|---|---|---|---|
+| T7 teste.7 (reta, começa na 1ª da SPX) | +14.7% · 0.01 s · 5 ret. | +18.3% · 0.02 s · 13 ret. | +12.0% · 0.06 s · 35 ret. | +11.8% · 0.20 s · 86 ret. |
+| T7 teste.7 (reta, com origem) | +9.3% · 0.01 s · 6 ret. | +16.0% · 0.01 s · 12 ret. | +12.3% · 0.08 s · 37 ret. | +9.5% · 0.30 s · 81 ret. |
+| F2 motor atual (600 ms) | +4.4% · 0.06 s · 6 ret. | +5.1% · 0.43 s · 15 ret. | +8.2% · 0.61 s · 48 ret. | +63.7% · 0.63 s · 127 ret. |
+| NN vizinho (ruas) | +19.3% · 0.00 s · 7 ret. | +19.3% · 0.00 s · 15 ret. | +17.8% · 0.00 s · 47 ret. | +14.6% · 0.00 s · 91 ret. |
+| NN + 2-opt | +5.5% · 0.00 s · 6 ret. | +10.3% · 0.01 s · 15 ret. | +11.8% · 0.02 s · 43 ret. | +9.6% · 0.06 s · 92 ret. |
+| CI inserção barata | +10.8% · 0.00 s · 6 ret. | +8.0% · 0.00 s · 14 ret. | +12.6% · 0.02 s · 47 ret. | +10.3% · 0.15 s · 114 ret. |
+| CI + 2-opt + Or-opt | +8.0% · 0.00 s · 5 ret. | +5.8% · 0.01 s · 14 ret. | +10.0% · 0.07 s · 45 ret. | +7.1% · 0.34 s · 110 ret. |
+| CI + 2-opt + Or-opt + 3-opt | +2.6% · 0.02 s · 4 ret. | +4.2% · 0.06 s · 14 ret. | +5.8% · 0.23 s · 41 ret. | +2.3% · 1.50 s · 98 ret. |
+| Multi (NN/CI/FI + busca) melhor | +2.1% · 0.04 s · 5 ret. | +4.2% · 0.09 s · 14 ret. | +2.0% · 0.63 s · 38 ret. | +0.0% · 3.60 s · 90 ret. |
+| **Proposto: Multi + ILS (2 s no total)** | **+0.1% · 2.00 s · 4 ret.** | **+0.1% · 2.00 s · 11 ret.** | **+0.2% · 2.00 s · 38 ret.** | **+2.0% · 2.01 s · 87 ret.** |
+| ILS 1 s (proxy LK) | +0.1% · 1.00 s · 4 ret. | +0.2% · 1.00 s · 12 ret. | +3.3% · 1.02 s · 39 ret. | +3.5% · 1.23 s · 100 ret. |
+| ILS 3 s (proxy LK) | +0.0% · 3.00 s · 4 ret. | +0.0% · 3.00 s · 12 ret. | +1.8% · 3.02 s · 40 ret. | +1.4% · 3.22 s · 98 ret. |
+| OR-Tools GLS 10 s | +0.7% · 10.00 s | +3.3% · 10.00 s | +3.8% · 10.00 s | +2.1% · 10.00 s |
+| OR-Tools GLS 30 s | +0.2% · 30.00 s | +1.9% · 30.00 s | +3.4% · 30.00 s | +1.8% · 30.00 s |
+
+**Conclusões:**
+- O teste.7 fica **9–18% acima** do melhor resultado nas mesmas condições.
+  - Metade da perda vem de calcular em linha reta; a outra metade, do algoritmo fraco.
+  - Isso é coerente com a sua observação de que o Spoke foi melhor.
+- 2-opt sozinho, Or-opt sozinho ou só inserção **não bastam** (+6–12%).
+- O ganho real vem de:
+  - movimentos de 3-opt (trocar dois trechos de lugar);
+  - **várias soluções iniciais** e melhoria iterada (ILS: perturba um trecho, melhora e só aceita o que melhorar).
+- **OR-Tools** (C++, rodado em Python) com 10–30 s **não superou** o método proposto com 2 s.
+- **"ILS (proxy LK)"** é uma busca local iterada com 2-opt, Or-opt e 3-opt. **Não é** Lin-Kernighan completo.
+- **Limites da bancada:**
+  - a malha é sintética;
+  - o tempo no S23 FE pode ser 2–4× maior (a medir);
+  - a comparação com o Spoke exige uma rota real sua.
+
+### 15.3 Avaliação por algoritmo
+| Algoritmo | Papel no motor novo | Observação |
+|---|---|---|
+| Vizinho mais próximo | uma das soluções iniciais | sozinho: +15–19% e muitos retornos |
+| Inserção mais barata | solução inicial principal | sozinha: +8–13% |
+| Inserção do mais distante | solução inicial | diversifica |
+| 2-opt | melhoria | com matriz assimétrica, o trecho invertido muda de sentido: custo exato por somas de prefixo nos dois sentidos, O(1) por tentativa |
+| Or-opt (1–3 paradas, nos 2 sentidos) | melhoria | corrige paradas "deixadas para trás" |
+| 3-opt (troca de trechos sem inverter) | melhoria | o maior ganho isolado; janela limitada (30) para caber no tempo |
+| Lin-Kernighan / LKH | não agora | complexo; para matriz assimétrica exige transformação (2n nós). Só se a validação real mostrar folga |
+| OR-Tools | **não no app** | sem versão JavaScript/WebAssembly oficial: não roda no PWA; no Android exigiria biblioteca nativa por arquitetura e um 2º motor (contra "um núcleo só"); não foi melhor na bancada. Fica como **referência de desenvolvimento** na bancada |
+
+### 15.4 Motor proposto (v3)
+1. **Várias soluções candidatas:**
+   - inserção mais barata, inserção do mais distante e vizinho mais próximo;
+   - a ordem atual;
+   - a última rota real guardada, quando houver.
+2. **Busca local exata para matriz assimétrica** em cada candidata: 2-opt, Or-opt e 3-opt.
+   - Custo incremental O(1) por tentativa.
+   - Para 250–500 paradas: listas de vizinhos (as 20–30 paradas mais próximas pela matriz) e marcadores "não olhar de novo".
+3. **ILS** com o tempo restante:
+   - perturbação local ("double-bridge" numa janela de 30–60 paradas);
+   - busca local de novo;
+   - só aceita o que melhora.
+4. **Escolha da melhor** pelo critério (tempo, distância ou inteligente).
+   - Tudo pela **mesma matriz pelas ruas**, ou aproximada só quando não houver matriz real nem guardada.
+5. **Orçamento de tempo adaptativo, em Web Worker** (a tela não trava):
+   - ≤ 50 paradas: 0,5 s;
+   - ≤ 100: 1 s;
+   - ≤ 250: 2 s;
+   - 500: 3 s.
+   - Com barra de progresso e botão de cancelar.
+   - O tempo de corte **nunca** deixa a solução incompleta: a construção é sempre terminada.
+6. **Regras mantidas:**
+   - visitas do mesmo endereço confirmado andam juntas (blocos);
+   - primeira e última fixas;
+   - concluídas nunca mudam;
+   - "nunca pior que a atual" **pela mesma matriz**;
+   - determinístico (semente fixa);
+   - a ordem só muda com o seu toque.
+7. **Sem agrupamento geográfico imposto.** Os retornos diminuem porque a busca global encontra a ordem melhor (medido na coluna "ret."), não por regras de bairro.
+
+### 15.5 Desempenho e limites (requisito 4)
+| Item | Proposta |
+|---|---|
+| **Divisão da matriz** | Blocos de 7 origens × 500 destinos (3.500 pares, o limite do ORS público). 500 paradas + origem ≈ 72 pedidos, a no máximo 40 por minuto: cerca de 2 min na 1ª vez, com barra de progresso. 50 paradas: 1 pedido. 100: 3. 250: 18 |
+| **Cache local** | IndexedDB, por par de coordenadas (arredondadas a ~1 m), perfil (carro) e data. Float32: 501² × 2 × 4 B ≈ 2 MB para 500 paradas |
+| **Reaproveitamento** | Ao reotimizar, as distâncias entre paradas pendentes já estão guardadas: só a linha da posição atual (1 × N) é pedida. 1 pedido |
+| **Só pendentes** | Concluídas ficam fora da matriz e da otimização |
+| **Memória** | Matriz em Float32Array (≈ 2 MB para 500); geometria como polilinha compacta (≈ 0,5 MB); pinos e linhas como camadas do MapLibre (não um elemento HTML por pino) |
+| **Cota diária do ORS** | Matriz: 500/dia (≈ 6 rotas cheias de 500 paradas, ou muitas de 100). Rotas: 2.000/dia (11 por rota de 500). Contador no app, com aviso antes de faltar. Ao acabar: última rota real guardada, ou aproximada rotulada |
+| **Tempo de otimização** (bancada) | 50: 0,5 s · 100: 1 s · 250: 2 s · 500: 2–3 s. **A medir no S23 FE** |
+| **Chave da API** | Digitada no app; nunca no Git, no build nem em registros; nunca enviada a outro lugar além do ORS. **No APK**, guardada cifrada pelo Keystore do Android, o que exige uma dependência nova a aprovar (plugin de armazenamento seguro do Capacitor). **No PWA**, não há cofre seguro no navegador: fica no armazenamento do app, sem exportação, com botão "Apagar chave". A chave é gratuita e pode ser revogada e trocada no site do ORS |
+
+### 15.6 Plano de implementação (cada fase gera um APK de teste; sem publicar no main nem mexer no PWA)
+| Fase | Entrega | Testes |
+|---|---|---|
+| **R-A · Motor v3** (independe da chave) | Motor da §15.4 em `core/otimizacao`, num Worker; substitui `ordemEstimada` e o motor F2; Central de otimização ligada | Regressão com as instâncias sintéticas da bancada (sementes fixas, limites de qualidade por tamanho) + todos os testes atuais (importação e pacotes do teste.7) |
+| **R-B · Matriz e traçado pelo ORS** | Adaptadores `DistanceMatrixProvider` e `RouteGeometryProvider` (ORS, carro; perfil "moto" previsto), cota, cache, autorizações R2, chave (R6) | Testes de contrato com respostas gravadas **fictícias**; conferência de que só coordenadas saem; validação real com a sua chave |
+| **R-C · Visual V16** (só após aprovar as telas) | Mapa em tela cheia, camadas do traçado, pinos, cartão retrátil, botões flutuantes, Mapa/Lista, 3 temas; tracejado reto removido | Testes de tela no emulador Android + conferência visual sua |
+| **R-D · Validação** | Relatório: motor atual × novo na mesma matriz real; depois × Spoke numa rota real autorizada | Distância, tempo, tempo de processamento e sequência das visitas, lado a lado |
+
+**Para comparar com o Spoke**, preciso da mesma rota otimizada no Spoke: a sequência das paradas, a distância e o tempo que ele mostra (capturas de tela bastam). Os dados reais ficam só no aparelho e na sessão, e nada vai para o Git.
