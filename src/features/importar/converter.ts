@@ -46,6 +46,27 @@ export interface RotaImportada {
   coordenadasSuspeitas?: number
 }
 
+/** Une grupos com alguma parada em comum (união transitiva), na ordem em que aparecem. */
+export function juntarGrupos(grupos: readonly (readonly string[])[]): string[][] {
+  const pai = new Map<string, string>()
+  const raiz = (k: string): string => {
+    let r = k
+    while (pai.get(r) !== r) r = pai.get(r)!
+    pai.set(k, r)
+    return r
+  }
+  for (const g of grupos) {
+    for (const k of g) if (!pai.has(k)) pai.set(k, k)
+    for (const k of g.slice(1)) pai.set(raiz(k), raiz(g[0]!))
+  }
+  const porRaiz = new Map<string, string[]>()
+  for (const k of pai.keys()) {
+    const r = raiz(k)
+    porRaiz.set(r, [...(porRaiz.get(r) ?? []), k])
+  }
+  return [...porRaiz.values()].filter((g) => g.length > 1)
+}
+
 const parteDe = (s: DraftStop) => {
   const i = s.issues.find((x) => x.code === 'stop_dividido')
   return i && i.code === 'stop_dividido' ? { i: i.part, n: i.parts } : undefined
@@ -61,14 +82,20 @@ export function rotaDaImportacao(r: ImportResult, decisoes: readonly Decision[],
     if (n !== null && n !== undefined) menorSeq.set(p.stopKey, Math.min(menorSeq.get(p.stopKey) ?? Infinity, n))
   }
   // "São o mesmo local": cada grupo vira UMA visita; a primeira parte (pela ordem da planilha) dá o nome.
+  // Escolhas que se cruzam (ex.: "juntar as partes da parada dividida" + "mesmo local" com uma dessas partes)
+  // formam um grupo só: senão a parte em comum entraria em duas visitas e seus pacotes contariam duas vezes.
   const grupoDe = new Map<string, string[]>()
-  for (const g of ef.groups) for (const k of g) grupoDe.set(k, g)
+  for (const g of juntarGrupos(ef.groups)) for (const k of g) grupoDe.set(k, g)
   const porChave = new Map(ef.stops.map((s) => [s.key, s]))
   const feitas = new Set<string>()
   const paradas: Parada[] = []
   for (const s of [...ef.stops].sort((a, b) => a.order - b.order)) {
     if (feitas.has(s.key)) continue
-    const membros = (grupoDe.get(s.key) ?? [s.key]).map((k) => porChave.get(k)).filter((x): x is DraftStop => !!x).sort((a, b) => a.order - b.order)
+    const membros = (grupoDe.get(s.key) ?? [s.key])
+      .filter((k) => !feitas.has(k))
+      .map((k) => porChave.get(k))
+      .filter((x): x is DraftStop => !!x)
+      .sort((a, b) => a.order - b.order)
     membros.forEach((m) => feitas.add(m.key))
     const principal = membros[0]!
     const comPonto = membros.filter((m) => m.sheetPoint)

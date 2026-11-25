@@ -41,6 +41,20 @@ export function casos() {
       }),
     },
     {
+      // Parada 5 dividida (Rua Teste 5 e Rua Teste 8); a parte da Rua Teste 8 é a mesma porta da parada 8.
+      // Juntar as partes + "São o mesmo local" cruzam na mesma parte: não pode contar pacote duas vezes.
+      nome: 'Escolhas "juntar" que se cruzam (parada dividida + mesmo local)',
+      arquivo: 'spx-juntar-cruzado.csv',
+      juntar: true,
+      ...basica(20, (l, i) => {
+        if (i === 6) {
+          l.rua = 8
+          l.lat = (C.lat + 8 * 0.0011).toFixed(5)
+          l.lon = (C.lon + (8 % 7) * 0.0004).toFixed(5)
+        }
+      }),
+    },
+    {
       nome: 'Coordenadas ausentes',
       arquivo: 'spx-sem-coordenadas.csv',
       ...basica(15, (l, i) => {

@@ -156,6 +156,21 @@ async function main() {
         await esperar(600)
         etapa('pacote repetido: uma linha removida')
       }
+      if (c.juntar) {
+        const div = await alvoDoToque(page, 'Juntar as partes')
+        if (!div) throw new Error('não apareceu "Juntar as partes de cada parada dividida"')
+        await tocar(div.x, div.y)
+        await esperar(500)
+        let n = 0
+        for (let k = 0; k < 6; k++) {
+          const ml = await alvoDoToque(page, 'São o mesmo local')
+          if (!ml) break
+          await tocar(ml.x, ml.y)
+          n++
+          await esperar(500)
+        }
+        etapa(`juntou as partes da parada dividida e ${n} "mesmo local"`)
+      }
       const t0 = await texto(page)
       const m = t0.match(/Pacotes\s*\n?\s*(\d+)\s*\n?\s*Paradas\s*\n?\s*(\d+)/)
       r.pacotes = m ? Number(m[1]) : null

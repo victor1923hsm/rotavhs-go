@@ -78,3 +78,24 @@ describe('planilha SPX → paradas do app', () => {
     expect(r.ok).toBe(false)
   })
 })
+
+describe('escolhas "juntar" que se cruzam (bug do 2.0.0-teste.6: 118 pacotes nas paradas, 115 na planilha)', () => {
+  it('duas escolhas com uma parte em comum viram UMA visita, sem contar pacote duas vezes', async () => {
+    const l = await ler('11-formato-spx.xlsx')
+    const f = l.achados.find((x) => x.kind === 'stop_dividido') as Extract<Finding, { kind: 'stop_dividido' }>
+    const [a, b] = f.stopKeys
+    // Outra parada qualquer, "no mesmo local" da parte a (como "São o mesmo local" na Conferência).
+    const c = l.resultado.stops.map((s) => s.key).find((k) => !f.stopKeys.includes(k))!
+    const ds: Decision[] = [
+      { type: 'agrupar_paradas', findingId: f.id, stopKeys: [a!, b!], at: 1 },
+      { type: 'agrupar_paradas', findingId: 'mesmo-local', stopKeys: [c, a!], at: 2 },
+    ]
+    const r = rotaDaImportacao(l.resultado, ds, l.arquivo)
+    const tns = pacotes(r)
+    expect(tns).toHaveLength(r.pacotes)
+    expect(new Set(tns).size).toBe(tns.length)
+    expect(r.pacotes).toBe(11)
+    expect(new Set(r.paradas.map((p) => p.id)).size).toBe(r.paradas.length)
+    expect(r.ordemSpx).toHaveLength(r.paradas.length)
+  })
+})
