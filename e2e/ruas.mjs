@@ -231,7 +231,10 @@ async function main() {
     await caso('Cofre: material adulterado vira "invalidada" e é apagado', async () => {
       await device.shell(`am force-stop ${PKG}`)
       const xml = `<?xml version='1.0' encoding='utf-8' standalone='yes' ?><map><string name="c1">AAAAAAAAAAAAAAAA:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA</string></map>`
-      await sh(`run-as ${PKG} sh -c "echo '${xml}' > shared_prefs/rotavhsgo_cofre.xml"`)
+      const b64 = Buffer.from(xml).toString('base64')
+      await sh(`run-as ${PKG} sh -c "echo ${b64} | base64 -d > shared_prefs/rotavhsgo_cofre.xml"`)
+      const conf = await sh(`run-as ${PKG} cat shared_prefs/rotavhsgo_cofre.xml`)
+      if (!conf.includes('AAAAAAAAAAAAAAAA:')) throw new Error(`não consegui adulterar o arquivo (${conf.slice(0, 60)})`)
       await reabrir(ctx)
       await ir(ctx.page, '/estatisticas/ruas')
       const t = await aguardar(async () => ((await texto(ctx.page)).includes('apagada pela segurança') ? true : null), 15_000)
