@@ -290,7 +290,7 @@ Distância indisponível **nunca** é trocada em silêncio por linha reta.
 - Preservar as correções do teste.7.
 - Não publicar no main nem alterar o PWA publicado.
 
-## RB1–RB5 · Fase R-B (plano de 2026-11-26, `ARQUITETURA.md` §16; decisões **PENDENTES**)
+## RB1–RB5 · Fase R-B (plano de 2026-11-26, `ARQUITETURA.md` §16) — proposta original; **aprovadas com alterações em 2026-11-26 08:58 (ver abaixo)**
 | # | Assunto | Proposta | Por que precisa de você |
 |---|---|---|---|
 | RB1 | Uso comercial do ORS | O plano gratuito diz "Commercial use not allowed". Proposta: **A** (perguntar à HeiGIT) **+ B** (usar só em testes de validação até a resposta). Se a resposta for não, ir para **C** (Valhalla próprio, ≈ € 6/mês) | envolve os termos de um terceiro e um possível custo mensal |
@@ -298,3 +298,33 @@ Distância indisponível **nunca** é trocada em silêncio por linha reta.
 | RB3 | Chave no PWA | **Ruas só no APK** (o navegador não tem cofre). O PWA continua com o cálculo aproximado | limita o PWA |
 | RB4 | Otimizar sem conexão com matriz guardada | o 1º trecho (da sua posição) fica *estimado* e rotulado; o resto pelas ruas | mistura uma estimativa num cálculo pelas ruas |
 | RB5 | Ponto fora da malha | a parada fica fora da otimização pelas ruas (no fim, sinalizada), com nova tentativa única de raio de até 1 km | a parada não é otimizada |
+
+## RB1–RB5 · APROVADAS com alterações (2026-11-26 08:58)
+| # | Decisão aprovada |
+|---|---|
+| RB1 | **ORS só para desenvolvimento e testes**, respeitando os termos. Preparar a consulta formal à HeiGIT sobre o uso individual em entregas remuneradas. Criar a interface **`RoutingProvider`**, independente de provedor (ORS, Valhalla, OSRM), **sem mudar o motor**. **Não contratar servidor agora** |
+| RB2 | Plugin de armazenamento seguro **autorizado depois da auditoria** (segurança, licença, manutenção, compatibilidade). **Nunca** embutir a chave no código-fonte nem no APK |
+| RB3 | **Temporária:** prioridade ao APK Android. O PWA atual continua funcionando, e fica aberta a integração futura por um **backend seguro** |
+| RB4 | Otimização **offline com a matriz guardada**; trechos estimados **claramente identificados** e nunca apresentados como percurso real. **Reaproveitar a matriz** ao reotimizar pendentes (sem pedidos desnecessários) |
+| RB5 | **Não** mandar paradas problemáticas automaticamente para o fim. Preservar a **coordenada original** e usar uma **coordenada auxiliar de acesso viário**. Encaixe progressivo em **25, 50, 100 e 200 m**; distâncias maiores **só com a sua confirmação**. Sem percurso válido: parada **pendente de revisão**, com **posicionamento manual** na sequência |
+
+**Requisitos obrigatórios da R-B (2026-11-26):**
+1. Validação da R-A corrigida (fechar e reabrir sem perder a rota; desempenho com rotas grandes).
+2. Preservar tudo o que foi aprovado no teste.8.
+3. Origem sempre na posição atual.
+4. Agrupamento automático do mesmo endereço preservado.
+5. Cancelar nunca muda a rota ativa.
+6. Testar matrizes assimétricas, mão única, conversões proibidas e vias sem acesso.
+7. Benchmarks com 50, 100, 150, 200, 300 e 500 paradas.
+8. Registrar consumo de API, tempo de processamento, memória, distância, duração estimada e pontos problemáticos.
+9. Comparar com o Spoke em condições equivalentes.
+10. Nunca trocar percurso real por linha reta em silêncio.
+11. Reconferir limites, endereços e termos oficiais.
+12. Preservar as regras de privacidade.
+13. Não enviar nomes, telefones, identificadores de encomendas nem endereços em texto ao provedor.
+14. Não alterar o main, o PWA publicado nem o RotaVHS original.
+15. Trabalhar só na branch v2-dev.
+
+**Execução:** RB-0 (preparação da arquitetura, auditoria das dependências e testes) autorizada. **A RB-1 só com nova autorização**, depois da apresentação dos resultados da RB-0.
+
+**RB-0 concluída em 2026-11-26** (ARQUITETURA §17). **Pendente da sua decisão para a RB-1:** cofre da chave — opção C (plugin próprio mínimo, recomendada), `@aparajita/capacitor-secure-storage` com `@capacitor/android` fixado em 8.6.2, ou outra.

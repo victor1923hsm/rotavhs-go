@@ -645,9 +645,9 @@ Todos usam dados do **OpenStreetMap**. A qualidade de mão única, retornos e ac
 
 **Validação física (S23 FE, planilha real, 2026-11-26, feita pelo usuário):**
 - **Aprovados:** importação · abertura da rota · agrupamento do mesmo endereço · localização atual pelo GPS · otimização de uma rota real · interface responsiva durante a otimização.
-- **Pendentes (não reprovados):** cancelar durante a otimização · reotimizar só as pendentes · onde a rota termina · tempo com rota grande.
+- **Pendentes (não reprovados), corrigido em 2026-11-26 a pedido do usuário:** (1) cancelar durante a otimização sem mudar a rota ativa · (2) reotimizar só as pendentes · (3) **fechar e reabrir o app sem perder a rota** · (4) **desempenho com rotas grandes**. Também continua na lista de conferência: onde a rota termina (livre, voltar, numa parada).
 
-## 16. Plano técnico da fase R-B (2026-11-26) — **aguardando aprovação; nada implementado**
+## 16. Plano técnico da fase R-B (2026-11-26) — **aprovado com alterações em 2026-11-26 08:58 (RB1–RB5, ver §17)**
 Objetivo da fase:
 - matriz de distância e tempo **pelas ruas**, com mão única e restrições;
 - otimização até 500 paradas sobre essa matriz;
@@ -790,7 +790,7 @@ Sem linhas retas em nenhum caso (R4). O motor v3 da R-A **não muda**: ele já a
 **Uso comercial:** você usa o app no seu trabalho de entregador. O plano gratuito do ORS **proíbe uso comercial**, e não está claro se uma ferramenta pessoal usada no trabalho entra nisso. **Não sou advogado.**
 
 **Opções (decisão RB1):**
-- **A.** Escrever para `enquiry@openrouteservice.org` e perguntar se o uso pessoal de um entregador autônomo é permitido. Usar o ORS só depois da resposta.
+- **A.** Escrever para `enquiry@openrouteservice.org` e perguntar se o uso pessoal de um entregador autônomo é permitido. Usar o ORS só depois da resposta. <!-- privacidade:permitir (endereço público da HeiGIT) -->
 - **B.** Seguir com o ORS **só para testes de validação** até a resposta.
 - **C.** Ir direto para servidor próprio: sem cota e sem a restrição. Os dados do OpenStreetMap são ODbL e exigem só atribuição.
 
@@ -840,3 +840,137 @@ Sem linhas retas em nenhum caso (R4). O motor v3 da R-A **não muda**: ele já a
 - a cota pode não bastar em rotas grandes repetidas;
 - turnos/restrições conforme o mapeamento do OSM;
 - tempo de 1,5–2 min na 1ª matriz de 500 paradas.
+
+## 17. R-B aprovada (2026-11-26 08:58) e resultado da RB-0 — **RB-0 concluída; RB-1 aguarda autorização**
+As decisões estão em `DECISOES.md` (RB1–RB5 e os 15 requisitos). Esta seção registra como elas viram arquitetura e o que a RB-0 entregou. **Nada da RB-0 está ligado ao app**: o teste.8 continua igual; nenhum pedido de rede foi feito a provedor de rotas.
+
+### 17.1 Ajustes em relação ao plano da §16
+- **RB1:** o ORS é só para desenvolvimento e testes, dentro dos termos ("Commercial use not allowed" no plano Standard). Antes de qualquer uso em trabalho remunerado, a **consulta formal à HeiGIT** (rascunho em §17.8, você envia). A troca de provedor (Valhalla/OSRM próprios no futuro) é feita só pela interface `RoutingProvider`; o motor não muda. Nenhum servidor contratado.
+- **RB2:** cofre de chave só depois da auditoria (§17.5). A chave nunca no código-fonte, no APK, no Git nem nos logs.
+- **RB3:** o cálculo pelas ruas entra primeiro no APK. O PWA continua como está (estimado), e fica aberta a integração por um backend seguro.
+- **RB4:** a matriz guardada é reaproveitada; só os pares que faltam são pedidos; trechos estimados ficam marcados célula a célula.
+- **RB5 (muda a §16.4):** a parada problemática **não vai para o fim**. Modelo de coordenadas: a **original** (pino, Navegar, nunca alterada) e a **auxiliar de acesso viário** (só para o cálculo). Encaixe progressivo 25 → 50 → 100 → 200 m; além disso só com a sua confirmação (350, 500 ou 1000 m, um de cada vez); sem via ou sem percurso → **pendente de revisão**, com posicionamento manual na sequência.
+
+### 17.2 Limites, endereços e termos reconferidos em 2026-11-26 (requisito 11)
+| Item | Valor |
+|---|---|
+| Endereço | `https://api.heigit.org/openrouteservice/v2/{directions,matrix,snap}/driving-car` (o antigo `api.openrouteservice.org` foi descontinuado: 10% da cota desde 27/08/2026, desligamento anunciado) |
+| CORS | corrigido pelo ORS em 19/05/2026 (chamada direta do app funciona) |
+| Plano Standard | Directions 2000/dia e 40/min · Matrix 500/dia e 40/min · Snap 2000/dia e 100/min · Optimization 500/dia e 40/min |
+| Por pedido | Matrix: 3500 pares (25 com parâmetros dinâmicos) · Directions: 50 pontos · Snap: 5000 pontos, `radius` obrigatório, `null` quando não encaixa |
+| Respostas de limite | 429 = por minuto; 403 = cota do dia; cabeçalhos `x-ratelimit-remaining` e `x-ratelimit-reset` |
+| Uso comercial | **não permitido** no plano Standard → consulta à HeiGIT (§17.8) |
+| Atribuição | "© openrouteservice.org by HeiGIT \| Map data © OpenStreetMap contributors" (resultados CC-BY 4.0) |
+| Perfil | `driving-car` (não há perfil de moto; a moto fica preparada no tipo `PerfilVeiculo`) |
+| A confirmar com a chave (RB-1) | o README do GitHub diz que o Snap não está na API pública, a página de planos diz que está; a matriz não tem `radius` (raio interno do servidor); um ponto sem rota pode anular o bloco inteiro (issue #1785) |
+| Valhalla (futuro, próprio) | `auto.max_locations` 20 e `max_matrix_locations` 50 por padrão (configuráveis) |
+| OSRM (futuro, próprio) | `--max-table-size` 100 e `--max-viaroute-size` 500 por padrão; pré-processamento ≈ 2 GB de RAM por GB de `.pbf` |
+
+### 17.3 Interface `RoutingProvider` (`src/core/ruas/tipos.ts`)
+```ts
+interface RoutingProvider {
+  id: 'ors' | 'valhalla' | 'osrm' | 'estimada' | 'sintetico'
+  limites: LimitesProvedor        // pares por matriz, pontos por rota/encaixe, por minuto e por dia
+  perfis: PerfilVeiculo[]         // 'carro' | 'moto'
+  pelasRuas: boolean              // false = estimado: números rotulados e SEM traçado
+  encaixar(pontos, raioM, perfil, sinal?): Promise<(Encaixe | null)[]>
+  matriz(pontos, origens, destinos, perfil, sinal?): Promise<BlocoMatriz>   // null = sem percurso
+  rota(sequencia, perfil, sinal?): Promise<TrechoRuas[]>
+}
+```
+Falhas: `FalhaProvedor` com `tipo` (`limite-minuto`, `cota-diaria`, `chave`, `indisponivel`, `requisicao`, `cancelado`); a mensagem nunca contém a chave nem dados da rota. O motor recebe só uma `Matriz` (`tipo: 'ruas'`), como hoje.
+
+**Módulos da RB-0 (puros, `src/core/ruas/`):**
+| Arquivo | Função |
+|---|---|
+| `blocos.ts` | divide a matriz em pedidos ≤ limite (linhas iguais juntas; só os pares que faltam) e o traçado em partes ≤ 50 pontos, cada uma começando onde a outra terminou |
+| `montagem.ts` | junta os blocos: **não recebido** (NaN) ≠ **sem percurso** (null do provedor) ≠ **estimado** (marcado); recusa misturar versões dos dados do mapa; **componente principal** (paradas com ida e volta pelas ruas); converte para o motor com custo proibitivo nos pares sem percurso; `trechosSemPercurso` confere a ordem final |
+| `encaixe.ts` | RB5: coordenada original + acesso viário, 25/50/100/200 m, confirmação acima disso, revisão |
+| `fluxo.ts` | orquestra encaixe → matriz → relatório, com limite por minuto (90% do oficial), novas tentativas em 429/5xx (Retry-After ou 15/30/60 s), parada limpa em cota/chave guardando o que já veio, cancelamento |
+| `limitador.ts` | janela deslizante de 60 s com relógio injetável |
+| `privacidade.ts` | **guarda de carga**: todo corpo de pedido é conferido antes de sair; só coordenadas (6 casas), índices e parâmetros técnicos; qualquer texto fora da lista é recusado; `ocultarChave` |
+| `cache.ts` | chave por par (sentido importa) + provedor + perfil + versão dos dados; apagado com a rota (regra da Etapa 3) |
+| `relatorio.ts` | requisito 8: pedidos por tipo, bytes, tempos separados (encaixe, matriz, algoritmo, traçado), memória, km, min, pontos problemáticos; previsão de consumo antes de baixar |
+| `provedores.ts` | limites oficiais (ORS, Valhalla, OSRM) e o **provedor estimado** (sem traçado: `rota()` recusa) |
+| `testes/malhaViaria.ts` | malha **fictícia** com mão única, quarteirões sem passagem, vias sem acesso, **conversões proibidas** (caminho mínimo sobre estados cruzamento + sentido de chegada) e áreas sem via |
+| `testes/provedorSintetico.ts` | `RoutingProvider` sobre a malha fictícia, com os limites do ORS, injeção de 429 e de cota, contagem de pedidos e bytes; **só testes** |
+
+### 17.4 Decisões técnicas da RB-0
+1. **Duas coordenadas por parada.** A original nunca muda; o acesso viário só existe no cálculo. Isso também prepara os "dois nós por parada" da G15.
+2. **"Sem percurso" nunca vira linha reta.** No motor ele vira custo proibitivo (finito, porque o motor só aceita números); a ordem final é conferida por `trechosSemPercurso` e, se usar algum, não é oferecida como pelas ruas.
+3. **Componente principal.** Na malha de teste com conversões proibidas, apareceram paradas aonde se chega e de onde não se sai (ou o contrário). Elas não entram no motor e ficam **pendentes de revisão** (posicionamento manual), nunca mandadas para o fim. Paradas que só se alcançam por **um** vizinho continuam (o motor respeita os pares proibidos).
+4. **Término livre:** os trechos parada → origem não são pedidos (economia de 1 linha por parada).
+5. **Diagonal junto** quando a linha inteira falta: linhas iguais viram um só grupo (500 paradas: 72 pedidos em vez de 501).
+6. **Folga de 90%** do limite por minuto (40/min → 36/min).
+7. **A origem também é encaixada.** Sem via perto de você, o cálculo pelas ruas não é feito e o app continua no estimado, rotulado.
+
+### 17.5 Auditoria do cofre da chave (RB2) — **recomendação para decidir na RB-1**
+Os dois pacotes foram baixados com `npm pack` numa pasta temporária fora do projeto e lidos; **nada foi instalado no projeto**.
+| Critério | `capacitor-secure-storage-plugin` 0.14.2 | `@aparajita/capacitor-secure-storage` 8.0.1 | Plugin próprio mínimo (opção C) |
+|---|---|---|---|
+| Licença | MIT | MIT | nossa |
+| Criptografia no Android | RSA no Keystore com `RSA/ECB/PKCS1Padding` (preenchimento antigo) | **AES-256-GCM** com chave no Android Keystore | AES-256-GCM no Keystore (≈ 120 linhas Java/Kotlin) |
+| Logs | **grava o nome da chave** no log (`Log.w … key`) e erros detalhados | sem logs de valores | sem logs |
+| Dependências | só `@capacitor/core` (peer) | puxa `@capacitor/android` 8.6.3 (o app usa 8.6.2), `@capacitor/app`, `@capacitor/keyboard` e `@capacitor/ios` como dependências diretas | nenhuma |
+| Manutenção | versões publicadas na véspera da auditoria (cautela de cadeia de suprimentos) | ativa, acompanha o Capacitor 8 | nossa |
+| Web (PWA) | sem segurança real | sem segurança real | não se aplica (RB3: só APK) |
+
+**Recomendação: opção C** (plugin próprio mínimo, só Android, só "guardar, ler e apagar a chave"). Motivo: elimina terceiros num ponto sensível, sem logs e sem dependências extras. Alternativa aceitável: o `@aparajita` com a versão do `@capacitor/android` fixada em 8.6.2 e conferência de que o `cap sync` não registra plugins que o app não usa. **O 0.14.2 não é recomendado** (preenchimento RSA antigo e nome da chave no log). A opção C é código nativo novo e precisa da sua aprovação.
+
+### 17.6 Testes da RB-0 (dados fictícios, sem rede)
+`src/core/ruas/ruas.test.ts`: 26 testes, todos passando. Cobrem: blocos (500 paradas → 72 pedidos ≤ 3500 pares, cobrindo todos os pares necessários; 100 → 3; reotimização pede só o que falta; traçado em partes de 50); montagem (não recebido × sem percurso × estimado, versão dos dados); RB5 (25/50/100/200, confirmação, revisão, original preservada); privacidade (recusa endereço, nome, código SPX, número da etiqueta e qualquer texto; 6 casas; chave oculta); limite por minuto e previsão de consumo; **matriz assimétrica por mão única** (> 20% dos pares com ida ≠ volta); **conversões proibidas** (nunca encurtam, várias alongam); **área sem via** (vai para confirmação); componente principal; fluxo completo com 429 simulados, cota diária interrompendo sem mudar a rota, cancelamento, traçado seguindo a malha e o provedor estimado sem traçado.
+
+### 17.7 Bancada 50–500 paradas (requisitos 7 e 8) — **malha fictícia, nesta CPU de nuvem**
+Xeon 2,3 GHz, 2 núcleos, Node. Malha fictícia 70 × 70 quarteirões com mão única, conversões proibidas e 3 áreas sem via. **Não mede o ORS real** (rede, fila e dados do OSM): isso é a RB-5, com a chave. A "espera do limite" é só o mínimo imposto pelos 36 pedidos/min, **sem** a latência da rede.
+| Paradas | No motor | Confirmar · revisar | Pedidos (encaixe · matriz · traçado previsto) | Espera mínima | Recebido | Matriz na memória | Motor | km · min do modelo |
+|---|---|---|---|---|---|---|---|---|
+| 50 | 50 | 0 · 0 | 3 · 1 · 2 | 0 s | 60 KB | 43 KB | 0,12 s | 26,6 · 156 |
+| 100 | 94 | 6 · 0 | 4 · 3 · 3 | 0 s | 207 KB | 150 KB | 0,25 s | 27,9 · 253 |
+| 150 | 150 | 0 · 0 | 3 · 7 · 4 | 0 s | 513 KB | 379 KB | 0,37 s | 30,6 · 373 |
+| 200 | 184 | 12 · 4 | 4 · 11 · 5 | 0 s | 781 KB | 593 KB | 0,37 s | 50,3 · 484 |
+| 300 | 290 | 7 · 3 | 4 · 27 · 7 | 0 s | 1,9 MB | 1,4 MB | 0,44 s | 69,6 · 743 |
+| 500 | 484 | 10 · 6 | 4 · 71 · 11 | 60 s | 5,3 MB | 4,0 MB | 0,56 s | 101,1 · 1205 |
+
+- "min" inclui 2 min parado por entrega (modelo do motor). Os km e minutos são **da malha fictícia**, não de ruas reais.
+- Em nenhum caso a ordem final usou trecho sem percurso. A ordem de geração (aleatória, **não** é a da SPX) usava 1 trecho sem percurso em 300 e 500 paradas: prova de que a conferência é necessária.
+- O aumento de memória do motor medido pelo heap ficou entre 1 e 16 MB, com ruído do coletor de lixo; o número confiável é o tamanho da matriz (tabela).
+- Cota do ORS público: a 1ª matriz de 500 paradas usa 71 de 500 pedidos do dia (≈ 6 rotas iguais por dia); 100 paradas, 3 pedidos.
+- Reprodução: `BANCADA=1 npx vitest run src/core/ruas/bancada.test.ts` (grava `/tmp/bancada-ruas.json`; fora da suíte normal).
+
+**Comparação com o Spoke (requisito 9):** não é possível nesta etapa: exige a matriz real (RB-3) e a mesma rota no aparelho. Protocolo previsto para a RB-5: mesma planilha, mesma posição de partida, término livre nos dois, mesmo veículo (carro), anotando km e tempo previstos de cada app, tempo do toque até a rota pronta e quantos pontos cada um não encaixou.
+
+### 17.8 Consulta formal à HeiGIT (rascunho; **você envia**, para `enquiry@openrouteservice.org`) <!-- privacidade:permitir (endereço público da HeiGIT) -->
+> **Subject:** Use of the openrouteservice public API by an individual delivery driver (paid work)
+>
+> Hello HeiGIT team,
+>
+> I am an independent parcel delivery driver in Brazil and I am building a personal app (not sold, not offered to others) to plan my own daily route. I would like to use the openrouteservice public API (driving-car: snap, matrix and directions) to compute the order of my stops and show the route on the map.
+>
+> Expected volume for one user: 1 route per working day, 100 to 300 stops (up to 500 on rare days); about 3 to 30 matrix requests and 3 to 11 directions requests per route, plus a few snap requests. Only coordinates are sent (no names, addresses or parcel identifiers). The required attribution is displayed in the app.
+>
+> Since the delivery work is paid, I would like to confirm whether this individual use is allowed under the Standard plan, or which plan or arrangement you recommend (for example a collaborative or paid plan). I am also prepared to self-host openrouteservice or another engine later if that is preferred.
+>
+> Thank you for your time and for maintaining openrouteservice.
+>
+> Best regards,
+> [seu nome]
+
+### 17.9 Riscos identificados na RB-0
+- **Uso comercial:** até a resposta da HeiGIT, o ORS fica só em desenvolvimento e testes.
+- **Snap na API pública** ainda a confirmar com a chave; se não existir, o encaixe vira pedidos de `directions`/`matrix` com raio, ou o raio interno do servidor (mais consumo e menos controle sobre os 25–200 m).
+- **Issue #1785:** um ponto sem rota pode anular um bloco inteiro da matriz; o encaixe prévio reduz o risco, e a RB-2 refaz o bloco dividido para achar o ponto.
+- **Quota:** rotas de 500 paradas repetidas no mesmo dia esgotam a matriz (≈ 6 por dia); a reotimização reaproveita a matriz (0 pedidos quando nada mudou).
+- **Restrições do OSM:** a qualidade depende do mapeamento local (mão única e conversões podem estar faltando ou erradas).
+- **A malha sintética é otimista em tamanho de resposta** (JSON compacto); o ORS manda mais bytes. Medir na RB-5.
+- **Cofre:** a opção recomendada (C) é código nativo novo, a testar no emulador e no S23 FE.
+
+### 17.10 Critérios de aprovação da RB-0
+1. Decisões RB1–RB5 e requisitos registrados (`DECISOES.md`, esta seção).
+2. Registro da validação da R-A corrigido (fechar e reabrir; desempenho com rotas grandes) — `CONTINUAR-PROJETO.md` e §15.
+3. `RoutingProvider` criado sem mudar o motor; app sem nenhuma mudança de comportamento.
+4. Testes de assimetria, mão única, conversões proibidas e vias sem acesso passando.
+5. Bancada 50/100/150/200/300/500 registrada com consumo, tempos, memória, km, min e pontos problemáticos.
+6. Guarda de privacidade: só coordenadas saem; texto é recusado.
+7. Suíte completa e o teste do emulador (funcionalidades do teste.8) passando na v2-dev; main sem alteração.
+8. Escolha do cofre (C, `@aparajita` fixado, ou outra) — **decisão sua para a RB-1**.
+
