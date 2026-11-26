@@ -50,14 +50,21 @@ async function abrir() {
     const page = await webview.page()
     let caixa = null
     const medir = async () => {
-      for (let t = 1; t <= 8 && !caixa; t++) {
+      for (let t = 1; t <= 20 && !caixa; t++) {
         await device.shell('rm -f /sdcard/ui.xml; uiautomator dump /sdcard/ui.xml').catch(() => {})
         const xml = String(await device.shell('cat /sdcard/ui.xml').catch(() => ''))
         const m = xml.match(/class="android\.webkit\.WebView"[^>]*bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"/)
         if (m) caixa = { x: Number(m[1]), y: Number(m[2]), w: Number(m[3]) - Number(m[1]), h: Number(m[4]) - Number(m[2]) }
         else await esperar(1500)
       }
-      if (!caixa) throw new Error('não consegui medir a posição da WebView na tela (uiautomator)')
+      if (!caixa) {
+        // uiautomator às vezes não responde no emulador: no perfil pixel_6 (1080×2400) a WebView fica sempre aqui.
+        const tam = String(await device.shell('wm size')).match(/(\d+)x(\d+)/)
+        if (tam && tam[1] === '1080' && tam[2] === '2400') {
+          caixa = { x: 0, y: 128, w: 1080, h: 2209 }
+          log('  (posição da WebView: medida padrão do perfil pixel_6)')
+        } else throw new Error('não consegui medir a posição da WebView na tela (uiautomator)')
+      }
     }
     log('Android:', device.model())
     return {
