@@ -79,7 +79,12 @@ describe.runIf(process.env.BANCADA)('bancada RB-0', () => {
         paresSemPercurso: r.relatorio.problemas.paresSemPercurso,
         proibidosUsados,
         proibidosNoMotor: proibidos.length,
-        rotasPorDiaORS: prev.rotasPorDia,
+        // Auditoria RB-3: "rotas por dia" pela cota de MATRIZ (500/dia), com o pior caso previsto (todas as paradas
+        // encaixadas) e com o que esta rota realmente usou (paradas sem rua não entram na matriz).
+        pedidosMatrizPrevistos: prev.pedidosMatriz,
+        rotasPorDiaPrevisto: prev.rotasPorDia,
+        rotasPorDiaReal: Math.floor(LIMITES_ORS.porDia.matriz / Math.max(1, r.relatorio.pedidos.matriz)),
+        rotasPorDiaTracadoRB4: Math.floor(LIMITES_ORS.porDia.rota / prev.pedidosRota),
       })
     }
     const fs = (await import('node:fs' as string)) as { writeFileSync(c: string, d: string): void }

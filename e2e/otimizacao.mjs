@@ -269,14 +269,18 @@ async function otimizarRuas(ctx, botaoInicial = 'OTIMIZAR MINHA ROTA') {
   let estimativa = ''
   let ultimo = ''
   let calculou = false // só aceita o resultado depois do toque em "Calcular pelas ruas" (avisos antigos não contam)
+  let painel = ''
   const fim = await aguardar(async () => {
-    for (const s of ['Autorizar e continuar', 'Calcular pelas ruas', 'Permitir localização']) {
+    for (const s of ['Autorizar e continuar', 'Calcular pelas ruas', 'Permitir localização', 'Aplicar nova ordem']) {
       const b = await botao(ctx.page, s)
       if (b?.livre && !b.desabilitado) {
         if (s === 'Calcular pelas ruas') calculou = true
         if (s === 'Calcular pelas ruas') estimativa = ((await texto(ctx.page)).match(/Consumo previsto[\s\S]*?Espera mínima[^\n]*/) ?? [''])[0].replace(/\s+/g, ' ')
+        // RB-3: o resultado pelas ruas espera o seu toque; guarda o texto do painel (comparação, rótulos) antes.
+        if (s === 'Aplicar nova ordem') painel = (await ctx.page.evaluate(() => document.querySelector('.ruas-resultado')?.innerText ?? '')).replace(/\s+/g, ' ')
         await ctx.tocar(b.x, b.y)
         await esperar(400)
+        if (s === 'Aplicar nova ordem' && botaoInicial !== 'OTIMIZAR MINHA ROTA') return { recalculo: 'aplicada', painel }
         return null
       }
     }
@@ -289,10 +293,15 @@ async function otimizarRuas(ctx, botaoInicial = 'OTIMIZAR MINHA ROTA') {
     if (t.includes('Não foi possível calcular pelas ruas')) return { falha: t.split('Não foi possível calcular pelas ruas')[1].slice(0, 200).trim() }
     if (t.includes('Indisponível neste navegador')) return { parar: 'Indisponível neste navegador' }
     if (!calculou) return null
+    if (t.includes('já é a melhor nas mesmas condições')) {
+      painel = (await ctx.page.evaluate(() => document.querySelector('.ruas-resultado')?.innerText ?? '')).replace(/\s+/g, ' ')
+      const f = await botao(ctx.page, 'Fechar')
+      if (f?.livre) await ctx.tocar(f.x, f.y)
+      return { recalculo: 'já era a melhor', painel }
+    }
     if (await ctx.page.$('.janela-fundo')) return null // ainda calculando
-    if (t.includes('Nova ordem sugerida') || t.includes('já é a melhor')) return { recalculo: t.includes('Nova ordem sugerida') ? 'sugestão' : 'já era a melhor' }
     const m = t.match(/Otimizada a partir de: sua posição no momento do cálculo · (\d+) paradas em ([\d,]+) s · ([^\n·]*)/)
-    return m ? { paradas: Number(m[1]), algoritmoS: Number(m[2].replace(',', '.')), rotulo: m[3].trim() } : null
+    return m ? { paradas: Number(m[1]), algoritmoS: Number(m[2].replace(',', '.')), rotulo: m[3].trim(), painel } : null
   }, 240_000, 200)
   if (!fim) throw new Error('o cálculo pelas ruas não terminou em 240 s')
   return { ...fim, totalS: (Date.now() - t0) / 1000, estimativa }
@@ -331,6 +340,7 @@ async function casosRuas(ctx, caso) {
       if (r.falha) throw new Error(`o app informou: ${r.falha}`)
       if (r.paradas !== 100 || (await sequencia(ctx.page)).length !== 100) throw new Error('paradas perdidas')
       if (!/pelas ruas \(servidor de teste\)/.test(r.rotulo)) throw new Error(`rótulo errado: ${r.rotulo}`)
+      if (!/não é roteirização real/i.test(r.painel) || !/Ordem atual/.test(r.painel) || !/Partida/.test(r.painel)) throw new Error(`painel de resultado sem o rótulo de teste ou sem a comparação: ${r.painel.slice(0, 160)}`)
       if (!ors.estado.recusados429) throw new Error('o servidor não chegou a responder 429')
       const textos = [...ors.estado.textosRecebidos].sort().join(',')
       if (textos !== 'distance,duration,m') throw new Error(`o corpo enviado tinha textos além do técnico: ${textos}`)
@@ -389,6 +399,47 @@ async function casosRuas(ctx, caso) {
       if (!ok) throw new Error('não confirmou o cancelamento')
       if ((await sequencia(ctx.page)).join() !== antes.join()) throw new Error('a ordem mudou depois de cancelar')
       return 'cancelado na etapa de encaixe/distâncias; ordem e fase iguais'
+    })
+    await caso('Revisão de paradas: sem rua até 200 m → correção confirmada, restaurada e raio maior autorizado', async () => {
+      ors.modo('normal')
+      const { pts } = planilha(50)
+      const k = 17
+      const alvo = { lat: Number(pts[k].lat.toFixed(5)), lon: Number(pts[k].lon.toFixed(5)) }
+      ors.longe([[alvo.lon, alvo.lat, 420]])
+      posicao = { lat: pts[0].lat, lon: pts[0].lon + 0.0002 }
+      await ctx.mudarPosicao(posicao)
+      await importar(ctx, 50)
+      const r = await otimizarRuas(ctx)
+      if (r.falha) throw new Error(`o app informou: ${r.falha}`)
+      if (!/1 em revisão/.test(r.painel)) throw new Error(`o painel não mostrou a parada em revisão: ${r.painel.slice(0, 200)}`)
+      const n0 = (await sequencia(ctx.page)).length
+      if (n0 !== 50) throw new Error(`a rota ficou com ${n0} paradas`)
+      await ir(ctx.page, '/rotas/revisao')
+      if (!(await aguardar(async () => /1 EM REVISÃO/.test(await texto(ctx.page)), 15_000))) throw new Error('a tela de revisão não abriu com 1 parada')
+      const original = await ctx.page.$eval('[data-teste="coord-original"]', (e) => e.textContent)
+      if (!original.startsWith(alvo.lat.toFixed(5))) throw new Error(`coordenada original errada: ${original}`)
+      await tocarLivre(ctx, 'Norte 10 m')
+      await tocarLivre(ctx, 'Confirmar correção')
+      await tocarLivre(ctx, 'Confirmar')
+      if (!(await aguardar(async () => (await texto(ctx.page)).includes('localização corrigida por você'), 10_000))) throw new Error('a correção não foi confirmada')
+      const corr = await ctx.page.$eval('[data-teste="coord-corrigida"]', (e) => e.textContent)
+      if ((await ctx.page.$eval('[data-teste="coord-original"]', (e) => e.textContent)) !== original) throw new Error('a coordenada original mudou')
+      await tocarLivre(ctx, 'Restaurar original')
+      await tocarLivre(ctx, 'Confirmar')
+      if (!(await aguardar(async () => (await texto(ctx.page)).includes('aguarda a sua confirmação'), 10_000))) throw new Error('a original não foi restaurada')
+      await tocarLivre(ctx, 'Até 500 m')
+      await tocarLivre(ctx, 'Confirmar')
+      if (!(await aguardar(async () => (await texto(ctx.page)).includes('busca até 500 m autorizada'), 10_000))) throw new Error('o raio maior não foi registrado')
+      const m0 = ors.estado.matriz
+      const r2 = await otimizarRuas(ctx, 'Recalcular os trechos afetados')
+      if (r2.falha) throw new Error(`o app informou: ${r2.falha}`)
+      if (/em revisão/.test(r2.painel)) throw new Error(`a parada continuou em revisão: ${r2.painel.slice(0, 160)}`)
+      const fim = await aguardar(async () => (await texto(ctx.page)).includes('Nenhuma parada em revisão'), 15_000)
+      if (!fim) throw new Error('a lista de revisão não esvaziou')
+      await ir(ctx.page, '/rotas')
+      const seq = await aguardar(async () => ((await sequencia(ctx.page)).length === 50 ? true : null), 15_000)
+      if (!seq) throw new Error('paradas perdidas ou duplicadas')
+      return `corrigida (${corr}) e restaurada; com 500 m autorizados entrou no cálculo · ${ors.estado.matriz - m0} pedido(s) de matriz no recálculo · ${r2.recalculo}`
     })
     await caso('Pelas ruas: 500 paradas (limite de 36 pedidos/min respeitado)', async () => {
       ors.modo('normal')

@@ -5,14 +5,14 @@
 // - Só coordenadas e parâmetros técnicos saem do aparelho (validarCarga antes de cada pedido).
 // - A chave vai só no cabeçalho Authorization; nunca em URL, mensagem de erro, relatório ou log.
 // - Envio ao ORS REAL bloqueado enquanto `liberadoReal` for falso (termos e autorização pendentes). Servidores de
-//   TESTE locais (127.0.0.1, localhost, 10.0.2.2) são aceitos para respostas controladas.
+//   TESTE locais (http://127.0.0.1 ou http://localhost) são aceitos para respostas controladas.
 // - Cada pedido tem tempo limite e pode ser cancelado. 401/403/429/5xx viram FalhaProvedor com tipo, sem detalhes.
 import { coordenadaParaEnvio, validarCarga } from './privacidade'
 import { LIMITES_ORS, ORS_BASE } from './provedores'
 import type { BlocoMatriz, Coordenada, Encaixe, PerfilVeiculo, RoutingProvider, TrechoRuas } from './tipos'
 import { FalhaProvedor } from './tipos'
 
-export const HOSTS_DE_TESTE = new Set(['127.0.0.1', 'localhost', '10.0.2.2'])
+export const HOSTS_DE_TESTE = new Set(['127.0.0.1', 'localhost'])
 export const TEMPO_LIMITE_MS = 30_000
 
 type FetchLike = (url: string, init: { method: string; headers: Record<string, string>; body: string; signal: AbortSignal; credentials?: 'omit'; cache?: 'no-store'; referrerPolicy?: 'no-referrer' }) => Promise<{
@@ -31,12 +31,35 @@ export interface OpcoesORS {
   tempoLimiteMs?: number
   agendar?: (f: () => void, ms: number) => unknown
   desagendar?: (h: unknown) => void
+  /** Chamado a cada pedido que sai (para o contador local de consumo). Nunca recebe coordenadas nem a chave. */
+  aoPedir?: (s: ServicoORS) => void
+  /** Chamado a cada resposta 2xx, com o "x-ratelimit-remaining" informado pelo provedor (se houver). */
+  aoResponder?: (s: ServicoORS, restante: number | undefined) => void
+}
+
+export type ServicoORS = 'matriz' | 'encaixe' | 'rota'
+const servico = (caminho: string): ServicoORS => (caminho.startsWith('/matrix') ? 'matriz' : caminho.startsWith('/snap') ? 'encaixe' : 'rota')
+
+/**
+ * 403 do ORS: "Access to this API has been disallowed" = chave sem acesso; texto de cota ou x-ratelimit-remaining = 0
+ * = cota do dia. A mensagem antiga "Daily quota reached or API key unauthorized" é ambígua: sem o cabeçalho que
+ * desempate, a falha é "cota ou chave" (a tela explica as duas possibilidades).
+ */
+export function classificar403(texto: string, restante: string | null): 'cota-diaria' | 'chave' | 'cota-ou-chave' {
+  if (restante === '0') return 'cota-diaria'
+  const t = texto.toLowerCase()
+  const cota = /quota|limit/.test(t)
+  const chave = /unauthori[sz]ed|disallowed|invalid|api key|forbidden/.test(t)
+  if (cota && chave) return restante !== null && Number(restante) > 0 ? 'chave' : 'cota-ou-chave'
+  if (cota) return 'cota-diaria'
+  return 'chave'
 }
 
 /** A base é um servidor de teste local (respostas controladas)? */
 export function ehBaseDeTeste(base: string): boolean {
   try {
-    return HOSTS_DE_TESTE.has(new URL(base).hostname)
+    const u = new URL(base)
+    return u.protocol === 'http:' && HOSTS_DE_TESTE.has(u.hostname)
   } catch {
     return false
   }
@@ -67,6 +90,8 @@ export function provedorORS(o: OpcoesORS): RoutingProvider & { readonly base: st
     if (!o.chave) throw new FalhaProvedor('chave')
     if (sinal?.aborted) throw new FalhaProvedor('cancelado')
     validarCarga(corpo)
+    // Conta TODO pedido que sai (o provedor também conta os recusados): contador local da cota do dia.
+    o.aoPedir?.(servico(caminho))
     const ctl = new AbortController()
     let esgotou = false
     const aoCancelar = () => ctl.abort()
@@ -100,17 +125,17 @@ export function provedorORS(o: OpcoesORS): RoutingProvider & { readonly base: st
       }
       if (r.status === 429) throw new FalhaProvedor('limite-minuto', 429, esperaDoCabecalho(r.headers, Date.now()))
       if (r.status === 401) throw new FalhaProvedor('chave', 401)
-      if (r.status === 403) {
-        // O ORS usa 403 para cota do dia esgotada e para chave sem acesso. Cota: remaining = 0 ou texto de cota.
-        const resta = r.headers.get('x-ratelimit-remaining')
-        throw new FalhaProvedor(resta === '0' || /quota/i.test(texto) ? 'cota-diaria' : 'chave', 403)
-      }
+      if (r.status === 403) throw new FalhaProvedor(classificar403(texto, r.headers.get('x-ratelimit-remaining')), 403)
       if (r.status >= 500) throw new FalhaProvedor('indisponivel', r.status)
       if (r.status < 200 || r.status >= 300) throw new FalhaProvedor('requisicao', r.status)
+      const resta = Number(r.headers.get('x-ratelimit-remaining'))
+      o.aoResponder?.(servico(caminho), Number.isFinite(resta) && r.headers.get('x-ratelimit-remaining') !== null ? resta : undefined)
       try {
-        return { json: JSON.parse(texto) as T, bytes: texto.length }
+        const json = JSON.parse(texto) as T
+        if (!json || typeof json !== 'object') throw new Error()
+        return { json, bytes: texto.length }
       } catch {
-        throw new FalhaProvedor('requisicao', r.status)
+        throw new FalhaProvedor('resposta-incompleta', r.status)
       }
     } finally {
       desagendar(h)
@@ -134,7 +159,7 @@ export function provedorORS(o: OpcoesORS): RoutingProvider & { readonly base: st
         sinal,
       )
       const ls = json.locations ?? []
-      if (ls.length !== pontos.length) throw new FalhaProvedor('requisicao', 200)
+      if (ls.length !== pontos.length) throw new FalhaProvedor('resposta-incompleta', 200)
       // O ORS também devolve o nome da rua: é descartado aqui (não guardamos nada além da coordenada).
       return ls.map((l) =>
         l && Array.isArray(l.location) && Number.isFinite(l.location[0]) && Number.isFinite(l.location[1])
@@ -160,7 +185,7 @@ export function provedorORS(o: OpcoesORS): RoutingProvider & { readonly base: st
         sinal,
       )
       const ok = (m?: (number | null)[][]) => Array.isArray(m) && m.length === origens.length && m.every((l) => Array.isArray(l) && l.length === destinos.length)
-      if (!ok(json.durations) || !ok(json.distances)) throw new FalhaProvedor('requisicao', 200)
+      if (!ok(json.durations) || !ok(json.distances)) throw new FalhaProvedor('resposta-incompleta', 200)
       const versao = json.metadata?.engine?.graph_date ?? json.metadata?.engine?.version
       return { origens, destinos, segundos: json.durations!, metros: json.distances!, versaoDados: versao ? String(versao) : undefined, bytes }
     },
@@ -175,7 +200,7 @@ export function provedorORS(o: OpcoesORS): RoutingProvider & { readonly base: st
       const coords = f?.geometry?.coordinates
       const seg = f?.properties?.segments
       const wp = f?.properties?.way_points
-      if (!coords || !seg || !wp || seg.length !== sequencia.length - 1 || wp.length !== sequencia.length) throw new FalhaProvedor('requisicao', 200)
+      if (!coords || !seg || !wp || seg.length !== sequencia.length - 1 || wp.length !== sequencia.length) throw new FalhaProvedor('resposta-incompleta', 200)
       return seg.map((s, i) => ({
         de: i,
         para: i + 1,

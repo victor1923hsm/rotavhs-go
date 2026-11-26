@@ -98,6 +98,12 @@ jobs:
           mkdir -p saida && cp "$APK" "saida/$NOME"
           sha256sum "saida/$NOME" | tee "saida/$NOME.sha256"
           echo "nome=$NOME" >> "$GITHUB_OUTPUT"
+          # Isolamento de rede (RB-3): o APK ENTREGUE só fala HTTPS. O HTTP para 127.0.0.1 existe só no APK do teste
+          # automático (-PrvTesteLocal), que não é entregue.
+          "$BT/aapt2" dump xmltree --file res/xml/rede.xml "$APK" | tee rede.txt
+          grep -q 'cleartextTrafficPermitted' rede.txt || { echo "::error::Configuração de rede ausente no APK."; exit 1; }
+          if grep -qE '127\.0\.0\.1|domain-config' rede.txt; then echo "::error::O APK entregue permite HTTP local."; exit 1; fi
+          "$BT/aapt2" dump xmltree --file AndroidManifest.xml "$APK" | grep -q 'networkSecurityConfig' || { echo "::error::Manifesto sem networkSecurityConfig."; exit 1; }
 
       - uses: actions/upload-artifact@v4
         with:
@@ -115,8 +121,11 @@ jobs:
           APK Android de **testes** do RotaVHS-Go (branch v2-dev). Não é a versão da Play Store.
           Instalação manual: baixe o arquivo .apk no celular e permita "instalar apps desconhecidos" para o navegador.
           Atualizações futuras instalam por cima, sem perder os dados (mesma chave de testes).
-          O que está pronto, incompleto ou simulado: docs/ANDROID.md e docs/CONTINUAR-PROJETO.md.
           NOTAS
+          # Notas específicas desta versão (o que funciona, o que é simulado, o que não foi validado).
+          N="${{ inputs.teste || github.run_number }}"
+          if [ -f "docs/notas-apk/teste-$N.md" ]; then echo >> notas.md; cat "docs/notas-apk/teste-$N.md" >> notas.md
+          else echo "O que está pronto, incompleto ou simulado: docs/ANDROID.md e docs/CONTINUAR-PROJETO.md." >> notas.md; fi
           gh release create "$TAG" saida/* --target "$GITHUB_SHA" --prerelease \
             --title "RotaVHS-Go ${{ steps.versao.outputs.nome }} (APK de testes, ${{ steps.versao.outputs.data }})" \
             --notes-file notas.md

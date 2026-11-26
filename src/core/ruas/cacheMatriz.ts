@@ -20,6 +20,27 @@ export interface MatrizGuardada {
   pontos: string[]
   min: number[]
   km: number[]
+  /**
+   * RB-3 — decisões SUAS sobre paradas problemáticas, por id da visita (não expiram com o cache; somem com a rota):
+   * coordenada corrigida (confirmada) usada só no cálculo pelas ruas; raio maior autorizado (> 200 m).
+   */
+  correcoes?: Record<string, CorrecaoParada>
+  raios?: Record<string, number>
+  /** Paradas pendentes de revisão no último cálculo pelas ruas, com o motivo. */
+  revisao?: ParadaEmRevisao[]
+}
+
+export interface CorrecaoParada {
+  lat: number
+  lon: number
+  /** Quando você confirmou (ms). */
+  em: number
+}
+
+export type MotivoRevisao = 'sem-via' | 'confirmar' | 'sem-percurso'
+export interface ParadaEmRevisao {
+  id: string
+  motivo: MotivoRevisao
 }
 
 /** Máximo de pontos guardados (500 paradas + origens de reotimizações). Acima disso, recomeça. */
@@ -31,6 +52,9 @@ export class CacheMatriz {
   private min: number[] = []
   private km: number[] = []
   acessos: MatrizGuardada['acessos'] = {}
+  correcoes: Record<string, CorrecaoParada> = {}
+  raios: Record<string, number> = {}
+  revisao: ParadaEmRevisao[] = []
   versaoDados = ''
   criadoEm: number
 
@@ -42,6 +66,10 @@ export class CacheMatriz {
   ) {
     this.criadoEm = agora
     if (!g) return
+    this.correcoes = { ...(g.correcoes ?? {}) }
+    this.raios = { ...(g.raios ?? {}) }
+    this.revisao = [...(g.revisao ?? [])]
+    if (!Array.isArray(g.pontos) || !g.pontos.length) return
     this.criadoEm = g.criadoEm
     this.versaoDados = g.versaoDados
     this.acessos = { ...g.acessos }
@@ -56,7 +84,37 @@ export class CacheMatriz {
     const g = dados as MatrizGuardada | null | undefined
     const formatoOk = !!g && g.versao === 1 && Array.isArray(g.pontos) && Array.isArray(g.min) && g.min.length === g.pontos.length ** 2 && g.km?.length === g.min.length
     const valido = formatoOk && entradaValida({ valor: 0, provedor: g!.provedor, perfil: g!.perfil, versaoDados: g!.versaoDados, criadoEm: g!.criadoEm }, { provedor, perfil, agora, validadeMs: VALIDADE_CACHE_MS })
-    return new CacheMatriz(provedor, perfil, agora, valido ? g! : undefined)
+    if (valido) return new CacheMatriz(provedor, perfil, agora, g!)
+    // Distâncias vencidas ou de outro provedor/perfil: descartadas. As SUAS decisões (correções, raios) ficam.
+    const c = new CacheMatriz(provedor, perfil, agora)
+    if (g && typeof g === 'object') {
+      c.correcoes = { ...(g.correcoes ?? {}) }
+      c.raios = { ...(g.raios ?? {}) }
+      c.revisao = Array.isArray(g.revisao) ? [...g.revisao] : []
+    }
+    return c
+  }
+
+  /**
+   * Esquece tudo o que o cache sabe de um ponto (acesso viário guardado e, se ele era ponto de cálculo, a linha e a
+   * coluna da matriz). Usado quando uma parada é reposicionada ou restaurada: os trechos afetados são pedidos de novo.
+   */
+  esquecerPonto(original: Coordenada) {
+    const k = chaveCoordenada(original)
+    const a = this.acessos[k]
+    delete this.acessos[k]
+    const alvos = [k]
+    if (a && !a.semVia) alvos.push(chaveCoordenada({ lat: a.lat, lon: a.lon }))
+    const N = this.pontos.length
+    for (const alvo of alvos) {
+      const i = this.idx.get(alvo)
+      if (i === undefined) continue
+      for (let j = 0; j < N; j++) {
+        if (j === i) continue
+        this.min[i * N + j] = this.km[i * N + j] = NaN
+        this.min[j * N + i] = this.km[j * N + i] = NaN
+      }
+    }
   }
 
   get tamanho() {
@@ -95,7 +153,9 @@ export class CacheMatriz {
     if (m.versaoDados) this.versaoDados = m.versaoDados
     for (const a of acessos)
       if (a.situacao === 'encaixado' && a.acesso) this.acessos[chaveCoordenada(a.original)] = { lat: a.acesso.lat, lon: a.acesso.lon, distanciaM: a.distanciaM ?? 0, raioM: a.raioM ?? 0 }
-      else if (a.situacao === 'confirmar' && !a.raioConfirmadoM) this.acessos[chaveCoordenada(a.original)] = { lat: 0, lon: 0, distanciaM: 0, raioM: a.raioM ?? 200, semVia: true }
+      // Sem rua até o raio tentado (200 m automáticos, ou o raio maior que você autorizou): não repete as tentativas.
+      else if ((a.situacao === 'confirmar' && !a.raioConfirmadoM) || (a.situacao === 'revisar' && a.motivoRevisao === 'sem-via'))
+        this.acessos[chaveCoordenada(a.original)] = { lat: 0, lon: 0, distanciaM: 0, raioM: a.raioM ?? 200, semVia: true }
     const novos = coords.map((c) => chaveCoordenada(c)).filter((k) => !this.idx.has(k))
     if (this.pontos.length + novos.length > MAX_PONTOS) this.limpar()
     const antigo = this.pontos.length
@@ -130,6 +190,7 @@ export class CacheMatriz {
       }
   }
 
+  /** Só as distâncias e acessos (as suas correções e raios autorizados continuam). */
   limpar() {
     this.idx.clear()
     this.pontos = []
@@ -140,6 +201,9 @@ export class CacheMatriz {
   }
 
   serializar(): MatrizGuardada {
-    return { versao: 1, provedor: this.provedor, perfil: this.perfil, versaoDados: this.versaoDados, criadoEm: this.criadoEm, acessos: { ...this.acessos }, pontos: [...this.pontos], min: [...this.min], km: [...this.km] }
+    return {
+      versao: 1, provedor: this.provedor, perfil: this.perfil, versaoDados: this.versaoDados, criadoEm: this.criadoEm, acessos: { ...this.acessos },
+      pontos: [...this.pontos], min: [...this.min], km: [...this.km], correcoes: { ...this.correcoes }, raios: { ...this.raios }, revisao: [...this.revisao],
+    }
   }
 }

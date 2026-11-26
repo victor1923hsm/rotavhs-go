@@ -12,7 +12,7 @@ export const PROVEDOR_PREVISTO = { nome: 'OpenRouteService', uso: 'só desenvolv
 
 const CHAVE_MODO = 'rotavhsgo.modoOtimizacao'
 const CHAVE_CONSENTIMENTO = 'rotavhsgo.consentimentoRuas'
-/** Só para testes: servidor de respostas controladas (aceito apenas em 127.0.0.1, localhost ou 10.0.2.2). */
+/** Só para testes: servidor de respostas controladas (aceito apenas em http://127.0.0.1 ou http://localhost). */
 export const CHAVE_BASE_TESTE = 'rotavhsgo.ruasTesteURL'
 
 /**
@@ -46,8 +46,10 @@ export function baseDeTeste(): string | null {
   try {
     const v = localStorage.getItem(CHAVE_BASE_TESTE)
     if (!v) return null
-    const h = new URL(v).hostname
-    return h === '127.0.0.1' || h === 'localhost' || h === '10.0.2.2' ? v : null
+    // Só HTTP local (o servidor de respostas controladas dos testes). https://localhost é a própria origem do app
+    // no Android, e 10.0.2.2 não é usado. No APK entregue, a configuração de rede bloqueia HTTP: nada responde.
+    const u = new URL(v)
+    return u.protocol === 'http:' && (u.hostname === '127.0.0.1' || u.hostname === 'localhost') ? v : null
   } catch {
     return null
   }

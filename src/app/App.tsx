@@ -1,4 +1,4 @@
-import { Suspense, useEffect, type ReactNode } from 'react'
+import { lazy, Suspense, useEffect, type ReactNode } from 'react'
 import { BrowserRouter, Navigate, Route, Routes, useLocation } from 'react-router'
 import { BarChart3, Package, Route as IconeRota, Wallet } from 'lucide-react'
 import { Aviso } from '@/components/ui/Aviso'
@@ -10,9 +10,8 @@ import { AlertaProximidade, PedidoGps } from '@/components/domain/Gps'
 import { Pedidos } from '@/screens/Pedidos'
 import { Rotas } from '@/screens/Rotas'
 import { Estatisticas } from '@/screens/Estatisticas'
-import { AvisoConferencia, GravacaoFalhou, RetomarRota } from '@/components/domain/Retomada'
 
-import { CalcularRuas, Custo, Financeiro, Importar, Preferencias, RotasFinalizadas, preCarregarTelas } from '@/app/sobDemanda'
+import { CalcularRuas, RevisaoParadas, Custo, Financeiro, Importar, Preferencias, RotasFinalizadas, preCarregarTelas } from '@/app/sobDemanda'
 
 /** Enquanto o bloco da tela chega (raro: eles são pré-carregados). */
 const Sob = ({ children }: { children: ReactNode }) => (
@@ -76,6 +75,7 @@ export function App() {
             <Route path="/estatisticas/rotas" element={<Sob><RotasFinalizadas /></Sob>} />
             <Route path="/estatisticas/preferencias" element={<Sob><Preferencias /></Sob>} />
             <Route path="/estatisticas/ruas" element={<Sob><CalcularRuas /></Sob>} />
+            <Route path="/rotas/revisao" element={<Sob><RevisaoParadas /></Sob>} />
             <Route path="/financeiro" element={<Sob><Financeiro /></Sob>} />
             <Route path="*" element={<Navigate to="/pedidos" replace />} />
           </Routes>
@@ -85,10 +85,21 @@ export function App() {
         <Aviso />
         <BuscaParada />
         <PedidoGps />
-        <GravacaoFalhou />
-        <AvisoConferencia />
-        <RetomarRota />
+        <AvisosDeRetomada />
       </div>
     </BrowserRouter>
+  )
+}
+
+const Retomada = lazy(() => import('@/components/domain/Retomada').then((m) => ({ default: () => <><m.GravacaoFalhou /><m.AvisoConferencia /><m.RetomarRota /></> })))
+
+/** Retomada, conferência a expirar e gravação falhou: só baixados quando há algo a mostrar (G14). */
+function AvisosDeRetomada() {
+  const algo = useEstado((e) => !!e.retomada || !!e.avisoConferencia || e.gravacao === 'falhou')
+  if (!algo) return null
+  return (
+    <Suspense fallback={null}>
+      <Retomada />
+    </Suspense>
   )
 }

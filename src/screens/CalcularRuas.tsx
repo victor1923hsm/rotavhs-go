@@ -1,5 +1,6 @@
-// Central de otimização (RB-1): modo de otimização, disponibilidade do provedor e a chave da API no cofre seguro.
-// O cálculo pelas ruas AINDA NÃO funciona (RB-2/RB-3): a tela diz isso claramente e não mostra resultado simulado.
+// Central de otimização (RB-1 + RB-3): modo, andamento, último resultado (origem, destino, distância, tempo,
+// paradas, comparação com a ordem anterior), consumo da API (hoje e previsto), provedor, chave e autorização.
+// Resultado de servidor de TESTE ou aproximado é rotulado como tal: nunca apresentado como roteirização real.
 // A chave nunca aparece na tela depois de guardada; o campo é de senha e é limpo ao guardar ou cancelar.
 import { useEffect, useState } from 'react'
 import { ArrowLeft, KeyRound, Loader2, ShieldCheck } from 'lucide-react'
@@ -8,6 +9,89 @@ import { useEstado } from '@/app/estado'
 import { baseDeTeste, disponibilidade, PROVEDOR_PREVISTO, useRuas } from '@/app/ruas'
 import { validarChave } from '@/platform/cofre'
 import { SeletorModo } from '@/components/domain/ModoOtimizacao'
+import { Comparacao, NOME_ORIGEM, NOME_TERMINO, rotuloDistancias } from '@/components/domain/ResultadoRuas'
+import { consumoHoje, estimarConsumo, type Estimativa } from '@/app/ruasOtimizacao'
+import { parada } from '@/app/estado'
+import { numero } from '@/core/formato'
+import { temCoordenada } from '@/core/parada'
+
+const NOME_ETAPA: Record<string, string> = { origem: 'Sua posição atual', encaixe: 'Encaixe das paradas nas ruas', matriz: 'Distâncias e tempos', calculando: 'Melhor ordem' }
+
+/** Andamento, último resultado e consumo (RB-3). */
+function PainelCalculo() {
+  const ot = useEstado((e) => e.otimizacao)
+  const cancelar = useEstado((e) => e.cancelarOtimizacao)
+  const pend = useEstado((e) => e.resultadoRuas)
+  const ult = useEstado((e) => e.ultimaOtimizacao)
+  const rotaId = useEstado((e) => e.rotaId)
+  const termino = useEstado((e) => e.termino)
+  const [est, setEst] = useState<Estimativa | null>(null)
+  const [calc, setCalc] = useState(false)
+  const hoje = consumoHoje()
+  const r = pend?.resumo ?? ult
+  const estimar = async () => {
+    setCalc(true)
+    const e = useEstado.getState()
+    const ps = e.ordem.filter((id) => e.status[id] === 'pendente' && temCoordenada(parada(id))).map((id) => ({ id, lat: parada(id).lat!, lon: parada(id).lon! }))
+    setEst(await estimarConsumo(rotaId, ps, termino.tipo === 'partida').catch(() => null))
+    setCalc(false)
+  }
+  return (
+    <>
+      {ot && (
+        <div className="secao">
+          <div className="t">Andamento do cálculo</div>
+          <div className="cartao" role="status" aria-live="polite">
+            <div className="linha" style={{ gap: 8 }}>
+              <Loader2 size={18} className="girando" aria-hidden="true" />
+              <strong className="cresce">{NOME_ETAPA[ot.etapa]} · {ot.modo === 'ruas' ? 'pelas ruas' : 'rápida'}</strong>
+              <span>{Math.round(ot.progresso * 100)}%</span>
+            </div>
+            {ot.detalhe && <p className="rotulo" style={{ margin: '4px 0 0', color: 'inherit' }}>{ot.detalhe}</p>}
+            <button className="botao contorno" style={{ marginTop: 8 }} onClick={cancelar}>Cancelar (a rota não muda)</button>
+          </div>
+        </div>
+      )}
+      <div className="secao">
+        <div className="t">{pend ? 'Resultado esperando a sua decisão' : 'Último cálculo aplicado'}</div>
+        {r ? (
+          <div className="cartao">
+            {r.simulado && <p className="ruas-aviso-teste" role="note">Respostas CONTROLADAS de servidor de teste: <b>não é roteirização real</b>.</p>}
+            {r.tipoMatriz !== 'ruas' && <p className="rotulo" style={{ margin: '0 0 6px', color: 'inherit' }}><b>Aproximado:</b> linha reta × 1,35, sem ruas.</p>}
+            <dl className="ruas-dados">
+              <div><dt>Modo</dt><dd>{r.tipoMatriz === 'ruas' ? 'Pelas ruas' : 'Rápido (aproximado)'}</dd></div>
+              <div><dt>Origem usada</dt><dd>{r.origem ? NOME_ORIGEM[r.origem] ?? r.origem : 'Sua posição atual'}</dd></div>
+              <div><dt>Destino final</dt><dd>{NOME_TERMINO[r.termino ?? 'livre']}</dd></div>
+              <div><dt>Paradas</dt><dd>{r.paradas}{r.revisao ? ` · ${r.revisao} em revisão` : ''}</dd></div>
+              <div><dt>Distância total</dt><dd>{numero(r.km)} km ({rotuloDistancias(r)})</dd></div>
+              <div><dt>Tempo de deslocamento</dt><dd>{numero(r.minDesloc ?? r.min, 0)} min (estimado; sem o tempo parado nas entregas)</dd></div>
+              {r.pedidos && <div><dt>Pedidos ao provedor</dt><dd>{r.pedidos.matriz} de distâncias · {r.pedidos.encaixe} de encaixe</dd></div>}
+            </dl>
+            <Comparacao r={r} />
+            {!!r.revisao && <LinkFluido to="/rotas/revisao" className="gps-acao" style={{ display: 'inline-block', marginTop: 8 }}>Revisar {r.revisao} parada(s)</LinkFluido>}
+          </div>
+        ) : (
+          <p className="rotulo">Nenhum cálculo nesta rota ainda.</p>
+        )}
+      </div>
+      <div className="secao">
+        <div className="t">Consumo da API</div>
+        <div className="cartao">
+          <p className="rotulo" style={{ margin: 0, color: 'inherit' }}>
+            Hoje (contagem deste aparelho): <b>{hoje.pedidos.matriz}</b> de {hoje.limites.matriz} pedidos de distâncias · <b>{hoje.pedidos.encaixe}</b> de {hoje.limites.encaixe} de encaixe · <b>{hoje.pedidos.rota}</b> de {hoje.limites.rota} de traçado. Resta: {hoje.resta.matriz} · {hoje.resta.encaixe} · {hoje.resta.rota}.
+          </p>
+          {est ? (
+            <p className="rotulo" style={{ margin: '6px 0 0', color: 'inherit' }}>
+              Para as {est.paradas} pendentes agora: <b>{est.pedidosMatriz}</b> pedido(s) de distâncias ({est.paresDoCache} trechos já guardados), {est.pedidosEncaixe}–{est.pedidosEncaixeMax} de encaixe; espera mínima {est.esperaMinimaS ? `${Math.ceil(est.esperaMinimaS / 60)} min` : 'nenhuma'}.{est.excede ? ' Não caberia no que resta hoje.' : ''} Traçado pelas ruas (próxima fase, ainda não usado): {est.pedidosTracadoRB4} pedido(s).
+            </p>
+          ) : (
+            <button className="botao contorno" style={{ marginTop: 8 }} onClick={() => void estimar()} disabled={calc}>{calc ? 'Calculando…' : 'Estimar o consumo para as pendentes'}</button>
+          )}
+        </div>
+      </div>
+    </>
+  )
+}
 
 function useOnline() {
   const [online, setOnline] = useState(() => (typeof navigator === 'undefined' ? true : navigator.onLine))
@@ -84,6 +168,8 @@ export function CalcularRuas() {
         <div className="t">Modo de otimização</div>
         <SeletorModo />
       </div>
+
+      <PainelCalculo />
 
       <div className="secao">
         <div className="t">Provedor de rotas</div>

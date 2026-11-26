@@ -1,6 +1,6 @@
 import { lazy, Suspense, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { useIr } from '@/app/navegacao'
+import { LinkFluido, useIr } from '@/app/navegacao'
 import { ehFicticia } from '@/app/prototipo'
 import { RefreshCw, Search, X } from 'lucide-react'
 import { parada, resumoDaOrdem, useEstado } from '@/app/estado'
@@ -112,8 +112,9 @@ export function Rotas() {
       {e.fase !== 'revisao' && e.origemOtimizacao && (
         <p className="rotulo" style={{ margin: '4px 0 8px' }}>
           Otimizada a partir de: {e.origemOtimizacao === 'gps' ? 'sua posição no momento do cálculo' : e.origemOtimizacao === 'teste' ? 'posição de teste (rota de exemplo)' : '1ª parada da SPX (versão anterior do app)'}
-          {uo ? ` · ${uo.paradas} paradas em ${numero(uo.ms / 1000, 1)} s · ${uo.tipoMatriz === 'ruas' ? `distâncias pelas ruas (${uo.fonte ?? 'provedor'})` : 'distâncias aproximadas, sem ruas'}` : ''}
+          {uo ? ` · ${uo.paradas} paradas em ${numero(uo.ms / 1000, 1)} s · ${uo.tipoMatriz === 'ruas' ? `distâncias pelas ruas (${uo.fonte ?? 'provedor'})${uo.simulado ? ' — respostas de teste, não é roteirização real' : ''}` : 'distâncias aproximadas, sem ruas'}` : ''}
           {uo?.revisao ? ` · ${uo.revisao} parada(s) pendente(s) de revisão (sem acesso pelas ruas), mantida(s) na posição anterior` : ''}
+          {uo?.revisao ? <> · <LinkFluido to="/rotas/revisao" className="gps-acao">Revisar paradas</LinkFluido></> : null}
         </p>
       )}
 
@@ -145,7 +146,7 @@ export function Rotas() {
             {(e.sugestao.daPosicao || e.sugestao.motivo === 'desvio') && <SeloDemo />}
           </div>
           <p className="sub" style={{ color: 'inherit', opacity: 0.85 }}>
-            {e.sugestao.ganhoMin !== undefined ? `−${numero(e.sugestao.ganhoMin, 0)} min · ` : ''}−{numero(e.sugestao.ganhoKm)} km (aproximado, sem ruas). Só as pendentes; as concluídas não mudam. A ordem só muda se você tocar em “Usar nova ordem”.
+            {e.sugestao.ganhoMin !== undefined ? `−${numero(e.sugestao.ganhoMin, 0)} min · ` : ''}−{numero(e.sugestao.ganhoKm)} km ({uo?.tipoMatriz === 'ruas' && e.sugestao.origem === 'manual' ? 'pelas ruas, modelo' : 'aproximado, sem ruas'}). Só as pendentes; as concluídas não mudam. A ordem só muda se você tocar em “Usar nova ordem”.
           </p>
           <div className="linha" style={{ marginTop: 10 }}>
             <button style={{ background: 'var(--menta)', color: 'var(--sobre-menta)' }} onClick={e.aceitarSugestao}>Usar nova ordem</button>
@@ -156,7 +157,7 @@ export function Rotas() {
 
       <div className="linha" style={{ justifyContent: 'space-between', marginTop: 16 }} ref={lista}>
         <h2 style={{ fontSize: 17, fontWeight: 500, margin: 0 }}>Sequência de paradas</h2>
-        <span className="rotulo">{e.fase === 'revisao' ? 'Ordem da SPX (referência)' : uo && uo.melhorou ? `−${numero(Math.max(0, uo.minAntes - uo.min), 0)} min · −${numero(Math.max(0, uo.kmAntes - uo.km))} km (${uo.tipoMatriz === 'ruas' ? 'pelas ruas, modelo' : 'aproximado'})` : 'Ordem atual'}</span>
+        <span className="rotulo">{e.fase === 'revisao' ? 'Ordem da SPX (referência)' : uo && uo.melhorou ? `−${numero(Math.max(0, uo.minAntes - uo.min), 0)} min · −${numero(Math.max(0, uo.kmAntes - uo.km))} km (${uo.tipoMatriz === 'ruas' ? (uo.simulado ? 'pelas ruas, servidor de teste' : 'pelas ruas, modelo') : 'aproximado'})` : 'Ordem atual'}</span>
       </div>
       <div>
         {e.ordem.map((id, i) => {

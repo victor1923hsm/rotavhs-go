@@ -6,7 +6,7 @@ import type { LimitesProvedor } from './tipos'
 export interface RelatorioRoteirizacao {
   provedor: string
   paradas: number
-  pedidos: { encaixe: number; matriz: number; rota: number }
+  pedidos: { encaixe: number; matriz: number; rota: number; divisoes?: number }
   bytesRecebidos: number
   tempos: { encaixeMs: number; matrizMs: number; algoritmoMs: number; tracadoMs: number }
   memoria: { matrizBytes: number; geometriaBytes: number }

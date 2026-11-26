@@ -15,7 +15,8 @@ function metros(a, b) {
 }
 
 export function iniciarORSFalso(porta = 8765) {
-  const estado = { modo: 'normal', pedidos: 0, matriz: 0, snap: 0, rota: 0, recusados429: 0, textosRecebidos: new Set(), chaveValidaVista: false }
+  // longe: [[lon, lat, m]] — a rua mais próxima fica a m metros (o encaixe só acha com raio ≥ m). RB-3.
+  const estado = { modo: 'normal', pedidos: 0, matriz: 0, snap: 0, rota: 0, recusados429: 0, textosRecebidos: new Set(), chaveValidaVista: false, longe: [] }
   const travados = []
   const cors = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'Authorization, Content-Type, Accept', 'Access-Control-Allow-Methods': 'POST, GET, OPTIONS', 'Access-Control-Max-Age': '600' }
   const json = (res, status, corpo, extra = {}) => {
@@ -37,7 +38,9 @@ export function iniciarORSFalso(porta = 8765) {
     req.on('end', () => {
       if (req.url === '/_estado') return json(res, 200, { ...estado, textosRecebidos: [...estado.textosRecebidos] })
       if (req.url === '/_modo') {
-        estado.modo = JSON.parse(corpo).modo
+        const m = JSON.parse(corpo)
+        estado.modo = m.modo
+        if (m.longe) estado.longe = m.longe
         return json(res, 200, { ok: true })
       }
       estado.pedidos++
@@ -55,7 +58,13 @@ export function iniciarORSFalso(porta = 8765) {
       coletar(c)
       if (req.url.includes('/snap/')) {
         estado.snap++
-        return json(res, 200, { locations: c.locations.map((p) => ({ location: [p[0], p[1]], name: 'Rua Fictícia', snapped_distance: 3.2 })) })
+        return json(res, 200, {
+          locations: c.locations.map((p) => {
+            const l = estado.longe.find((q) => Math.abs(q[0] - p[0]) < 2e-5 && Math.abs(q[1] - p[1]) < 2e-5)
+            if (l) return (c.radius ?? 0) >= l[2] ? { location: [p[0] + 0.00001, p[1]], name: 'Rua Fictícia', snapped_distance: l[2] - 1 } : null
+            return { location: [p[0], p[1]], name: 'Rua Fictícia', snapped_distance: 3.2 }
+          }),
+        })
       }
       if (req.url.includes('/matrix/')) {
         if (estado.modo === 'limite' && (estado.matriz + estado.recusados429 + 1) % 3 === 0) {
@@ -80,6 +89,9 @@ export function iniciarORSFalso(porta = 8765) {
       ok({
         porta,
         estado,
+        longe: (l) => {
+          estado.longe = l
+        },
         modo: (m) => {
           estado.modo = m
           if (m !== 'travar') travados.splice(0).forEach((r) => r.socket?.destroy())

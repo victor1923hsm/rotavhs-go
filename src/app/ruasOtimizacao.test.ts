@@ -7,7 +7,7 @@ import type { RotaImportada } from '@/features/importar/converter'
 import { definirObterOrigem, inserirMantendoPosicao, parada, ROTA_EXEMPLO, useEstado } from './estado'
 import { iniciarPersistencia, type Persistencia } from './persistencia'
 import { CHAVE_BASE_TESTE, useRuas } from './ruas'
-import { estimarConsumo, prepararPelasRuas } from './ruasOtimizacao'
+import { estimarConsumo, gravarDecisao, lerDecisoes, prepararPelasRuas } from './ruasOtimizacao'
 
 const PLANILHA: RotaImportada = { ...ROTA_EXEMPLO, fonte: 'planilha', arquivo: 'rota-ficticia.csv' }
 const E = () => useEstado.getState()
@@ -56,10 +56,13 @@ afterEach(() => {
 const pendentes = () => E().ordem.filter((id) => E().status[id] === 'pendente')
 
 describe('otimizar pelas ruas (respostas controladas)', () => {
-  it('aplica a ordem pelas ruas, rotulada, com todas as paradas; só coordenadas saem', async () => {
+  it('aplica a ordem pelas ruas (só com o seu toque), rotulada, com todas as paradas; só coordenadas saem', async () => {
     const antes = [...E().ordem].sort()
     await E().otimizar({ preparar: prepararPelasRuas })
     expect(E().falhaOtimizacao).toBeNull()
+    expect(E().fase).toBe('revisao') // nada muda até você aplicar
+    expect(E().resultadoRuas?.resumo.simulado).toBe(true)
+    E().aplicarResultadoRuas()
     expect(E().fase).toBe('otimizada')
     expect(E().ultimaOtimizacao?.tipoMatriz).toBe('ruas')
     expect(E().ultimaOtimizacao?.fonte).toBe('servidor de teste')
@@ -75,6 +78,7 @@ describe('otimizar pelas ruas (respostas controladas)', () => {
 
   it('reotimização das pendentes reaproveita o cache: só a sua posição é pedida de novo', async () => {
     await E().otimizar({ preparar: prepararPelasRuas })
+    E().aplicarResultadoRuas()
     E().definirFase('andamento')
     deslocamento = 0.002 // você andou: a nova posição precisa de 1 linha nova
     const m0 = ors.estado.matriz
@@ -103,6 +107,8 @@ describe('otimizar pelas ruas (respostas controladas)', () => {
     const antes = [...E().ordem]
     await E().otimizar({ preparar: prepararPelasRuas })
     expect(E().falhaOtimizacao).toBeNull()
+    expect(E().resultadoRuas?.motivos.find((m) => m.id === alvo.id)?.motivo).toBe('sem-percurso')
+    E().aplicarResultadoRuas()
     expect(E().ordem).toContain(alvo.id)
     expect(E().ordem.length).toBe(antes.length)
     expect(E().ultimaOtimizacao?.revisao).toBeGreaterThanOrEqual(1)
@@ -171,4 +177,126 @@ describe('posição das pendentes de revisão', () => {
     expect(inserirMantendoPosicao(['c', 'a', 'd'], ['b'], ['a', 'b', 'c', 'd'])).toEqual(['c', 'a', 'b', 'd'])
     expect(inserirMantendoPosicao(['c', 'd'], ['a', 'b'], ['a', 'b', 'c', 'd'])).toEqual(['a', 'b', 'c', 'd'])
   })
+})
+
+describe('RB-3: resultado, comparação e revisão de paradas (respostas controladas)', () => {
+  it('compara com a ordem anterior pela mesma matriz; "Manter a ordem atual" não muda nada', async () => {
+    const antes = [...E().ordem]
+    await E().otimizar({ preparar: prepararPelasRuas })
+    const r = E().resultadoRuas!
+    expect(r.resumo.tipoMatriz).toBe('ruas')
+    expect(r.resumo.kmAntes).toBeGreaterThan(0)
+    expect(r.resumo.minDesloc!).toBeLessThanOrEqual(r.resumo.minDeslocAntes!)
+    expect(r.resumo.origem).toBe('gps')
+    expect(r.resumo.termino).toBe('livre')
+    E().manterOrdemAtual()
+    expect(E().ordem).toEqual(antes)
+    expect(E().resultadoRuas).toBeNull()
+  })
+
+  it('não aplica se uma entrega foi marcada depois do cálculo', async () => {
+    await E().otimizar({ preparar: prepararPelasRuas })
+    const antes = [...E().ordem]
+    E().selecionar(E().ordem[0]!)
+    E().marcar('entregue')
+    E().aplicarResultadoRuas()
+    expect(E().ordem).toEqual(antes)
+    expect(E().resultadoRuas).toBeNull()
+  })
+
+  it('correção da localização: o cálculo usa a corrigida, a original nunca muda; restaurar volta à original', async () => {
+    const alvo = parada(E().rota.ordemSpx[3]!)
+    ors = orsAnalitico({ chaveValida: CHAVE, inacessiveis: [{ lat: alvo.lat, lon: alvo.lon }] })
+    ;(globalThis as { fetch?: unknown }).fetch = ors.fetch
+    await E().otimizar({ preparar: prepararPelasRuas })
+    expect(E().resultadoRuas!.motivos.map((m) => m.id)).toContain(alvo.id)
+    E().manterOrdemAtual()
+    expect((await lerDecisoes(E().rotaId)).revisao.map((r) => r.id)).toContain(alvo.id)
+    const corrigida = { lat: alvo.lat + 0.0004, lon: alvo.lon + 0.0003 }
+    await gravarDecisao(E().rotaId, alvo.id, alvo, { tipo: 'corrigir', ...corrigida })
+    const c0 = ors.estado.corpos.length
+    await E().otimizar({ preparar: prepararPelasRuas })
+    const novos = ors.estado.corpos.slice(c0).join('\n')
+    expect(novos).toContain(String(Math.round(corrigida.lon * 1e6) / 1e6))
+    expect(E().resultadoRuas!.motivos.map((m) => m.id)).not.toContain(alvo.id)
+    expect(E().resultadoRuas!.resumo.corrigidas).toBe(1)
+    expect(parada(alvo.id).lat).toBe(alvo.lat) // a original da parada não mudou
+    // poucos pedidos: só os trechos da parada corrigida (+ a sua posição) — o resto vem do cache
+    expect(ors.estado.matriz).toBeLessThanOrEqual(4)
+    E().manterOrdemAtual()
+    await gravarDecisao(E().rotaId, alvo.id, alvo, { tipo: 'restaurar' })
+    await E().otimizar({ preparar: prepararPelasRuas })
+    expect(E().resultadoRuas!.motivos.map((m) => m.id)).toContain(alvo.id)
+  })
+
+  it('raio maior só com a sua autorização: sem ela, a parada aguarda; com ela, é encaixada', async () => {
+    const alvo = parada(E().rota.ordemSpx[5]!)
+    ors = orsAnalitico({ chaveValida: CHAVE, semViaAte: [{ lat: alvo.lat, lon: alvo.lon, m: 420 }] })
+    ;(globalThis as { fetch?: unknown }).fetch = ors.fetch
+    await E().otimizar({ preparar: prepararPelasRuas })
+    expect(E().resultadoRuas!.motivos.find((m) => m.id === alvo.id)?.motivo).toBe('confirmar')
+    E().manterOrdemAtual()
+    const s0 = ors.estado.snap
+    await E().otimizar({ preparar: prepararPelasRuas })
+    // não repetiu as tentativas automáticas (só a sua posição foi encaixada)
+    expect(ors.estado.snap - s0).toBe(1)
+    E().manterOrdemAtual()
+    await gravarDecisao(E().rotaId, alvo.id, alvo, { tipo: 'raio', raioM: 500 })
+    await E().otimizar({ preparar: prepararPelasRuas })
+    expect(E().resultadoRuas!.motivos.map((m) => m.id)).not.toContain(alvo.id)
+  })
+
+  it('posicionar uma parada na sequência à mão: nada some nem duplica', () => {
+    const o = [...E().ordem]
+    E().posicionarParada(o[0]!, o[4]!)
+    expect(E().ordem.length).toBe(o.length)
+    expect(new Set(E().ordem).size).toBe(o.length)
+    expect(E().ordem.indexOf(o[0]!)).toBe(E().ordem.indexOf(o[4]!) + 1)
+  })
+
+  it('cota do dia pelo contador do aparelho: se não couber, nada é enviado', async () => {
+    const dia = new Date().toISOString().slice(0, 10)
+    ls.set('rotavhsgo.consumoRuas', JSON.stringify({ versao: 1, dia, provedor: 'ors', pedidos: { matriz: 500, encaixe: 0, rota: 0 }, restanteInformado: {} }))
+    await E().otimizar({ preparar: prepararPelasRuas })
+    expect(E().falhaOtimizacao).toMatch(/resta hoje/)
+    expect(ors.estado.pedidos).toBe(0)
+  })
+
+  it('o contador conta cada pedido que sai (sem coordenadas)', async () => {
+    await E().otimizar({ preparar: prepararPelasRuas })
+    const c = JSON.parse(ls.get('rotavhsgo.consumoRuas')!)
+    expect(c.pedidos.matriz).toBe(ors.estado.matriz)
+    expect(c.pedidos.encaixe).toBe(ors.estado.snap)
+    expect(JSON.stringify(c)).not.toMatch(/-?\d+\.\d{4,}/)
+  })
+
+  it('bloco de matriz todo nulo (issue #1785): dividido até isolar a parada sem rota; as outras entram', async () => {
+    const alvo = parada(E().rota.ordemSpx[2]!)
+    ors = orsAnalitico({ chaveValida: CHAVE, anulaBloco: [{ lat: alvo.lat, lon: alvo.lon }] })
+    ;(globalThis as { fetch?: unknown }).fetch = ors.fetch
+    await E().otimizar({ preparar: prepararPelasRuas })
+    expect(E().falhaOtimizacao).toBeNull()
+    const r = E().resultadoRuas!
+    expect(r.motivos.map((m) => m.id)).toEqual([alvo.id])
+    expect(r.resumo.pedidos!.divisoes).toBeGreaterThan(0)
+  })
+
+  it('resposta incompleta: repete (limitado) e segue; se continuar incompleta, para sem aplicar nada', async () => {
+    ors = orsAnalitico({ chaveValida: CHAVE, incompletas: 1 })
+    ;(globalThis as { fetch?: unknown }).fetch = ors.fetch
+    await E().otimizar({ preparar: prepararPelasRuas })
+    expect(E().falhaOtimizacao).toBeNull()
+    expect(E().resultadoRuas).not.toBeNull()
+    E().manterOrdemAtual()
+    const antes = [...E().ordem]
+    ors = orsAnalitico({ chaveValida: CHAVE, incompletas: 99 })
+    ;(globalThis as { fetch?: unknown }).fetch = ors.fetch
+    ls.delete('rotavhsgo.consumoRuas')
+    await E().descartarRota()
+    E().carregarRota(PLANILHA)
+    await pers!.aguardar()
+    await E().otimizar({ preparar: prepararPelasRuas })
+    expect(E().falhaOtimizacao).toMatch(/incompletas/)
+    expect(E().ordem.length).toBe(antes.length)
+  }, 30_000)
 })

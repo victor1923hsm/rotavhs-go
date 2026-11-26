@@ -1,9 +1,8 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { App } from '@/app/App'
-import { abrirArmazenamento, iniciarPersistencia } from '@/app/persistencia'
+import { abrirArmazenamento, iniciarPersistencia, memoria } from '@/app/persistencia'
 import { iniciarDinamica } from '@/app/dinamica'
-import { armazenamentoMemoria } from '@/platform/armazenamento/memoria'
 import '@/styles/app.css'
 
 const desenhar = () =>
@@ -17,5 +16,5 @@ const desenhar = () =>
 iniciarDinamica() // DEMONSTRAÇÃO P3: origem pela posição, desvio e alerta de proximidade
 const pronto = abrirArmazenamento()
   .then(iniciarPersistencia)
-  .catch(() => iniciarPersistencia(armazenamentoMemoria()))
+  .catch(async () => iniciarPersistencia(await memoria()))
 Promise.race([pronto, new Promise((r) => setTimeout(r, 2500))]).finally(desenhar)

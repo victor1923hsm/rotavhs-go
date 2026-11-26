@@ -7,7 +7,6 @@
 
 import { useEstado } from './estado'
 import { armazenamentoDexie } from '@/platform/armazenamento/dexie'
-import { armazenamentoMemoria } from '@/platform/armazenamento/memoria'
 import { decidirConferencia } from '@/core/retencao'
 import { eventosDaMudanca, type Armazenamento, type Conferencia, type Sessao } from '@/platform/armazenamento/tipos'
 
@@ -36,15 +35,18 @@ let atual: Persistencia | null = null
 /** A persistência em uso (para a Conferência e as telas de dados). */
 export const persistenciaAtual = () => atual
 
+/** Armazenamento em memória (raro: sem IndexedDB). Carregado só quando preciso, para não pesar a abertura. */
+export const memoria = async () => (await import('@/platform/armazenamento/memoria')).armazenamentoMemoria()
+
 /** Escolhe o IndexedDB; sem ele, a memória (a rota vale só nesta visita). */
 export async function abrirArmazenamento(): Promise<Armazenamento> {
   try {
-    if (typeof indexedDB === 'undefined') return armazenamentoMemoria()
+    if (typeof indexedDB === 'undefined') return await memoria()
     const a = armazenamentoDexie()
     await a.db.open()
     return a
   } catch {
-    return armazenamentoMemoria()
+    return memoria()
   }
 }
 

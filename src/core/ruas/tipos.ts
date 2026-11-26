@@ -68,6 +68,9 @@ export type TipoFalha =
   | 'tempo-esgotado' // o provedor não respondeu no tempo limite
   | 'sem-conexao' // sem rede (o pedido nem chegou)
   | 'requisicao' // pedido recusado (parâmetro, limite do pedido)
+  | 'resposta-incompleta' // resposta com formato errado, tamanhos diferentes do pedido ou valores inválidos
+  | 'cota-ou-chave' // 403 ambíguo ("Daily quota reached or API key unauthorized") sem cabeçalho que desempate
+  | 'cota-local' // o consumo previsto passaria do que resta da cota do dia (contador do aparelho)
   | 'bloqueado' // envio ao provedor real ainda não liberado (termos/autorização pendentes)
   | 'cancelado'
 

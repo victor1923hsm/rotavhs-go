@@ -31,7 +31,8 @@ describe('cliente ORS: segurança e bloqueio', () => {
     await expect(p.encaixar([malha.coordenada(40)], 25, 'carro')).rejects.toMatchObject({ tipo: 'bloqueado' })
     expect(f.estado.pedidos).toBe(0)
     expect(ehBaseDeTeste('https://api.heigit.org/openrouteservice/v2')).toBe(false)
-    expect(ehBaseDeTeste('http://10.0.2.2:8080/x')).toBe(true)
+    expect(ehBaseDeTeste('http://10.0.2.2:8080/x')).toBe(false)
+    expect(ehBaseDeTeste('https://localhost/x')).toBe(false) // origem do próprio app no Android
   })
 
   it('a chave vai só no cabeçalho; nunca na URL, no corpo nem na mensagem de erro', async () => {

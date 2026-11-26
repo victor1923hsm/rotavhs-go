@@ -29,7 +29,8 @@ export class JanelaDeslizante {
 }
 
 /** Espera de nova tentativa depois de 429/5xx: Retry-After se houver, senão 15 s, 30 s, 60 s. */
-export function esperaNovaTentativa(tentativa: number, retryAfterMs?: number): number {
+export function esperaNovaTentativa(tentativa: number, retryAfterMs?: number, rapida = false): number {
   if (retryAfterMs !== undefined && retryAfterMs > 0) return Math.min(retryAfterMs, 120_000)
-  return [15_000, 30_000, 60_000][Math.min(tentativa, 2)]!
+  // Resposta incompleta não é sobrecarga do provedor: tenta de novo logo (1 s, 2 s, 4 s).
+  return (rapida ? [1_000, 2_000, 4_000] : [15_000, 30_000, 60_000])[Math.min(tentativa, 2)]!
 }

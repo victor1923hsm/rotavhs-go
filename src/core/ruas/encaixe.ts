@@ -5,6 +5,7 @@
 // - Sem via nem depois da confirmação, ou sem percurso válido: "pendente de revisão", com posicionamento manual.
 //   Nunca é mandada automaticamente para o fim da rota.
 import type { Coordenada, Encaixe } from './tipos'
+import { FalhaProvedor } from './tipos'
 
 export const RAIOS_ENCAIXE_M = [25, 50, 100, 200] as const
 /** Raios oferecidos depois da sua confirmação (um de cada vez). */
@@ -59,7 +60,7 @@ export function planejarEncaixe(acessos: readonly AcessoViario[]): { raioM: numb
 
 /** Aplica o resultado de um pedido de encaixe (mesma ordem de `indices`). Não altera a coordenada original. */
 export function aplicarEncaixe(acessos: AcessoViario[], indices: readonly number[], raioM: number, resultados: readonly (Encaixe | null)[]) {
-  if (resultados.length !== indices.length) throw new Error('Resposta de encaixe com quantidade diferente do pedido.')
+  if (resultados.length !== indices.length) throw new FalhaProvedor('resposta-incompleta')
   indices.forEach((idx, k) => {
     const a = acessos[idx]!
     const r = resultados[k]

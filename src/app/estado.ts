@@ -145,6 +145,50 @@ export interface Preparado {
   /** Confere o resultado (ex.: nenhum trecho sem percurso). Devolve o motivo de recusa, ou null. */
   validar?: (ordem: readonly string[]) => string | null
   fonte: string
+  /** Motivo de cada parada em revisão (sem rua perto, aguardando raio maior, sem percurso). */
+  motivos?: { id: string; motivo: 'sem-via' | 'confirmar' | 'sem-percurso' }[]
+  /** Pedidos feitos ao provedor neste cálculo. */
+  pedidos?: { matriz: number; encaixe: number; divisoes: number }
+  /** Paradas calculadas pela coordenada corrigida por você. */
+  corrigidas?: number
+  /** true = respostas CONTROLADAS de um servidor de teste (não é roteirização real). */
+  simulado?: boolean
+}
+/** Números de um cálculo (sempre do modelo; "pelas ruas" só com provedor; "simulado" = servidor de teste). */
+export interface ResumoCalculo {
+  km: number
+  min: number
+  kmAntes: number
+  minAntes: number
+  /** Só o deslocamento (sem os minutos parado em cada entrega). */
+  minDesloc?: number
+  minDeslocAntes?: number
+  ms: number
+  tipoMatriz: 'estimada' | 'ruas'
+  melhorou: boolean
+  paradas: number
+  fonte?: string
+  revisao?: number
+  simulado?: boolean
+  origem?: TipoOrigem
+  termino?: TerminoEscolhido['tipo']
+  pedidos?: { matriz: number; encaixe: number; divisoes: number }
+  corrigidas?: number
+  em?: number
+}
+export interface ResultadoPendente {
+  tipo: 'otimizar' | 'recalcular'
+  rotaId: string
+  ordemAntes: string[]
+  /** Pendentes no momento do cálculo (uma entrega marcada depois invalida o resultado). */
+  pendAntes: string[]
+  ordemNova: string[]
+  /** Paradas pendentes que entraram no cálculo, na nova ordem (para mostrar a sequência). */
+  pendNova: string[]
+  resumo: ResumoCalculo
+  motivos: { id: string; motivo: 'sem-via' | 'confirmar' | 'sem-percurso' }[]
+  origem: TipoOrigem
+  origemPonto: Ponto
 }
 export interface OpcoesCalculo {
   /** Modo pelas ruas: monta a matriz pelas ruas antes do motor. Falhas viram mensagem (sem trocar o modo). */
@@ -253,7 +297,19 @@ interface Estado {
   /** Cancela a otimização em andamento: a rota continua exatamente como estava. */
   cancelarOtimizacao: () => void
   /** Resultado da última otimização aplicada (números do modelo, sempre estimados). */
-  ultimaOtimizacao: { km: number; min: number; kmAntes: number; minAntes: number; ms: number; tipoMatriz: 'estimada' | 'ruas'; melhorou: boolean; paradas: number; fonte?: string; revisao?: number } | null
+  ultimaOtimizacao: ResumoCalculo | null
+  /**
+   * Resultado PELAS RUAS esperando a sua decisão (RB-3): a rota anterior continua valendo até você tocar em
+   * "Aplicar nova ordem". Comparação com a ordem atual pela MESMA matriz e nas mesmas condições.
+   */
+  resultadoRuas: ResultadoPendente | null
+  aplicarResultadoRuas: () => void
+  manterOrdemAtual: () => void
+  /**
+   * Posicionamento MANUAL de uma parada pendente na sequência (RB5/RB-3): logo depois de `depoisDe` (null = primeira
+   * das pendentes). Só com o seu toque; concluídas não mudam; nada é excluído nem duplicado.
+   */
+  posicionarParada: (id: string, depoisDe: string | null) => void
   termino: TerminoEscolhido
   definirTermino: (t: TerminoEscolhido) => void
   /** Marca (ou corrige) um pacote da visita. Quando não sobra pacote pendente, pula para a próxima. */
@@ -361,7 +417,7 @@ function usarRota(r: RotaImportada) {
   return {
     rota: r, rotaId, iniciadaEm: null, pacotes: pacotesIniciais(r), origemOtimizacao: null as TipoOrigem | null, fase: 'revisao' as Fase, ordem: [...r.ordemSpx],
     status: statusInicial(r), selecionada: r.ordemSpx[0]!, sugestao: null, ultimaAuto: null, planos: [spx], planoAtivo: spx.id as string | null,
-    alertas: alertasVazios(), retomada: null, otimizacao: null, falhaOtimizacao: null, falhaModo: 'rapida' as const, ultimaOtimizacao: null, termino: { tipo: 'livre' } as TerminoEscolhido,
+    alertas: alertasVazios(), retomada: null, otimizacao: null, falhaOtimizacao: null, falhaModo: 'rapida' as const, ultimaOtimizacao: null, resultadoRuas: null, termino: { tipo: 'livre' } as TerminoEscolhido,
   }
 }
 
@@ -377,7 +433,7 @@ function resumoAtual(e: Estado, motivo: ResumoRota['motivo'], agora: number): Re
  * Pipeline comum de OTIMIZAR e RECALCULAR: obtém a sua posição atual, monta a tarefa só com as pendentes e calcula
  * em segundo plano. Cancelar (ou falhar) nunca mexe na rota. Devolve null quando não há resultado para aplicar.
  */
-async function calcular(tipo: 'otimizar' | 'recalcular', opcoes: OpcoesCalculo = {}) {
+async function calcular(tipo: 'otimizar' | 'recalcular', opcoes: OpcoesCalculo = {}): Promise<CalculoFeito | null> {
   const st = useEstado.setState
   const get = useEstado.getState
   const sinal = { cancelado: false }
@@ -442,6 +498,40 @@ async function calcular(tipo: 'otimizar' | 'recalcular', opcoes: OpcoesCalculo =
   // Pendentes de revisão (modo pelas ruas) voltam para a posição relativa que tinham: nenhuma parada some.
   const ordemPend = inserirMantendoPosicao(res.ordem, preparado?.revisar ?? [], m.pend)
   return { res, origem, m, ordemAntes: ordem, ordemPend, preparado }
+}
+
+function resumoDoCalculo(res: ResultadoOtimizacao, paradas: number, origem: TipoOrigem, termino: TerminoEscolhido['tipo'], preparado?: Preparado | null, servicoMin = 2): ResumoCalculo {
+  const n = res.ordem.length
+  return {
+    km: res.km, min: res.min, kmAntes: res.kmAtual, minAntes: res.minAtual, ms: res.ms, tipoMatriz: res.tipoMatriz, melhorou: res.melhorou, paradas,
+    minDesloc: Math.max(0, res.min - servicoMin * n), minDeslocAntes: Math.max(0, res.minAtual - servicoMin * n),
+    fonte: preparado?.fonte, revisao: preparado?.revisar.length ?? 0, simulado: preparado?.simulado, origem, termino,
+    pedidos: preparado?.pedidos, corrigidas: preparado?.corrigidas,
+  }
+}
+
+/** Resultado pelas ruas: NÃO é aplicado sozinho. Fica esperando "Aplicar nova ordem" ou "Manter a ordem atual". */
+interface CalculoFeito {
+  res: ResultadoOtimizacao
+  origem: OrigemObtida
+  m: { feitas: string[]; pend: string[]; semCoord: string[] }
+  ordemAntes: string[]
+  ordemPend: string[]
+  preparado: Preparado | null
+}
+function pendenteDasRuas(tipo: 'otimizar' | 'recalcular', r: CalculoFeito) {
+  const { res, origem, m, ordemAntes, ordemPend, preparado } = r
+  const e = useEstado.getState()
+  const servico = preparado!.tarefa.servicoMin ?? 2
+  // A solução nunca é pior que a atual pela MESMA matriz (motor); se não melhorou, a nova ordem é a atual.
+  const ordemNova = res.melhorou ? [...m.feitas, ...ordemPend, ...m.semCoord] : [...ordemAntes]
+  useEstado.setState({
+    resultadoRuas: {
+      tipo, rotaId: e.rotaId, ordemAntes: [...ordemAntes], pendAntes: ordemAntes.filter((id) => e.status[id] === 'pendente'), ordemNova, pendNova: res.melhorou ? ordemPend : ordemAntes.filter((id) => e.status[id] === 'pendente'),
+      resumo: resumoDoCalculo(res, ordemPend.length, origem.tipo, e.termino.tipo, preparado, servico),
+      motivos: preparado!.motivos ?? [], origem: origem.tipo, origemPonto: { lat: origem.ponto.lat, lon: origem.ponto.lon },
+    },
+  })
 }
 
 export const useEstado = create<Estado>((set, get) => ({
@@ -600,6 +690,7 @@ export const useEstado = create<Estado>((set, get) => ({
     cancelarExecucao() // um cálculo automático em andamento dá lugar ao seu
     const resultado = await calcular('otimizar', opcoes)
     if (!resultado) return
+    if (resultado.preparado) return pendenteDasRuas('otimizar', resultado)
     const { res, origem, m, ordemAntes, ordemPend, preparado } = resultado
     const nova = [...m.feitas, ...ordemPend, ...m.semCoord]
     ORIGEM_USADA = { lat: origem.ponto.lat, lon: origem.ponto.lon }
@@ -607,12 +698,60 @@ export const useEstado = create<Estado>((set, get) => ({
     const plano = novoPlano(get().rotaId, 'otimizada', nova, origem.tipo)
     set({
       fase: 'otimizada', destacarOtimizar: false, ordem: nova, sugestao: null, origemOtimizacao: origem.tipo, planos: podarPlanos([...get().planos, plano]), planoAtivo: plano.id,
-      ultimaOtimizacao: { km: res.km, min: res.min, kmAntes: res.kmAtual, minAntes: res.minAtual, ms: res.ms, tipoMatriz: res.tipoMatriz, melhorou: res.melhorou, paradas: ordemPend.length, fonte: preparado?.fonte, revisao: preparado?.revisar.length ?? 0 },
+      ultimaOtimizacao: resumoDoCalculo(res, ordemPend.length, origem.tipo, get().termino.tipo, preparado),
       selecionada: nova.find((id) => get().status[id] === 'pendente') ?? get().selecionada,
     })
     void ordemAntes
-    const rev = preparado?.revisar.length ? ` · ${preparado.revisar.length} pendente(s) de revisão mantida(s) na posição anterior` : ''
-    get().avisar(res.melhorou || rev ? `Rota otimizada${preparado ? ' pelas ruas' : ''} a partir da sua posição · ${ordemPend.length} paradas${rev}` : 'A ordem atual já era a melhor pelo modelo; nada mudou')
+    get().avisar(res.melhorou ? `Rota otimizada a partir da sua posição · ${ordemPend.length} paradas` : 'A ordem atual já era a melhor pelo modelo; nada mudou')
+  },
+  resultadoRuas: null,
+  aplicarResultadoRuas: () => {
+    const r = get().resultadoRuas
+    if (!r) return
+    const e = get()
+    // A rota não pode ter mudado entre o cálculo e o seu toque (nova importação, entrega marcada, outra ordem).
+    const pendAgora = e.ordem.filter((id) => e.status[id] === 'pendente')
+    if (e.rotaId !== r.rotaId || e.ordem.join() !== r.ordemAntes.join() || pendAgora.join() !== r.pendAntes.join() || e.ordem.some((id) => r.ordemNova.indexOf(id) < 0)) {
+      set({ resultadoRuas: null })
+      e.avisar('A rota mudou depois do cálculo · nada foi aplicado. Calcule de novo.')
+      return
+    }
+    if (r.ordemNova.join() === e.ordem.join()) {
+      set({ resultadoRuas: null, ultimaOtimizacao: { ...r.resumo, em: Date.now() } })
+      e.avisar('A ordem atual já era a melhor · nada mudou')
+      return
+    }
+    ORIGEM_USADA = { lat: r.origemPonto.lat, lon: r.origemPonto.lon }
+    ORDEM_OTIMIZADA = r.ordemNova
+    const plano = novoPlano(e.rotaId, 'otimizada', r.ordemNova, r.origem)
+    set({
+      ...(r.tipo === 'otimizar' ? { fase: 'otimizada' as const, destacarOtimizar: false } : {}),
+      ordem: [...r.ordemNova], sugestao: null, origemOtimizacao: r.origem, planos: podarPlanos([...e.planos, plano]), planoAtivo: plano.id,
+      ultimaOtimizacao: { ...r.resumo, em: Date.now() }, resultadoRuas: null,
+      selecionada: r.ordemNova.find((id) => e.status[id] === 'pendente') ?? e.selecionada,
+    })
+    const rev = r.motivos.length ? ` · ${r.motivos.length} pendente(s) de revisão mantida(s) na posição anterior` : ''
+    e.avisar(`Nova ordem ${r.resumo.simulado ? 'pelas ruas (servidor de teste)' : 'pelas ruas'} aplicada · ${r.resumo.paradas} paradas${rev}`)
+  },
+  posicionarParada: (id, depoisDe) => {
+    const e = get()
+    if (e.status[id] !== 'pendente' || id === depoisDe || !e.ordem.includes(id)) return
+    if (depoisDe !== null && !e.ordem.includes(depoisDe)) return
+    const sem = e.ordem.filter((x) => x !== id)
+    let pos: number
+    if (depoisDe === null) {
+      const k = sem.findIndex((x) => e.status[x] === 'pendente')
+      pos = k < 0 ? sem.length : k
+    } else pos = sem.indexOf(depoisDe) + 1
+    const nova = [...sem.slice(0, pos), id, ...sem.slice(pos)]
+    if (nova.length !== e.ordem.length || new Set(nova).size !== nova.length) return
+    set({ ordem: nova, sugestao: null, resultadoRuas: null })
+    e.avisar(`Parada ${parada(id).stop ?? '?'} reposicionada na sequência por você`)
+  },
+  manterOrdemAtual: () => {
+    if (!get().resultadoRuas) return
+    set({ resultadoRuas: null })
+    get().avisar('Ordem atual mantida · nada mudou')
   },
   cancelarOtimizacao: () => {
     if (!get().otimizacao) return
@@ -645,6 +784,7 @@ export const useEstado = create<Estado>((set, get) => ({
     cancelarExecucao()
     const resultado = await calcular('recalcular', opcoes)
     if (!resultado) return
+    if (resultado.preparado) return pendenteDasRuas('recalcular', resultado)
     const { res, m, ordemPend } = resultado
     const ganhoMin = Math.max(0, res.minAtual - res.min)
     if (!res.melhorou || ganhoMin < 0.5) {

@@ -3,6 +3,7 @@
 // Nunca preenche par desconhecido ou sem percurso com linha reta.
 import type { Matriz } from '../otimizacao/matriz'
 import type { BlocoMatriz } from './tipos'
+import { FalhaProvedor } from './tipos'
 
 /** Custo de um par sem percurso para o motor: proibitivo, mas finito (o motor só aceita números). */
 export const CUSTO_PROIBIDO_MIN = 100_000
@@ -26,7 +27,23 @@ export class MontagemMatriz {
     }
   }
 
+  /** Bloco inteiro sem percurso (todas as células null)? Suspeita do problema conhecido do ORS (issue #1785). */
+  static blocoTodoNulo(b: BlocoMatriz): boolean {
+    let celulas = 0
+    for (let a = 0; a < b.origens.length; a++)
+      for (let c = 0; c < b.destinos.length; c++) {
+        if (b.origens[a] === b.destinos[c]) continue
+        celulas++
+        if (b.segundos[a]?.[c] !== null || b.metros[a]?.[c] !== null) return false
+      }
+    return celulas > 1
+  }
+
   aplicar(b: BlocoMatriz) {
+    // Resposta incompleta (linhas ou colunas faltando): recusada inteira, nada é aplicado pela metade.
+    const forma = (m: unknown) => Array.isArray(m) && m.length === b.origens.length && m.every((l) => Array.isArray(l) && l.length === b.destinos.length)
+    if (!forma(b.segundos) || !forma(b.metros)) throw new FalhaProvedor('resposta-incompleta')
+    for (const m of [b.segundos, b.metros]) for (const l of m) for (const v of l) if (v !== null && (typeof v !== 'number' || !Number.isFinite(v) || v < 0)) throw new FalhaProvedor('resposta-incompleta')
     if (b.versaoDados) {
       if (this.versaoDados && this.versaoDados !== b.versaoDados) throw new Error('Os dados do mapa mudaram no meio do download: refazer a matriz.')
       this.versaoDados = b.versaoDados
@@ -37,17 +54,25 @@ export class MontagemMatriz {
         const m = b.metros[a]?.[c]
         const k = i * this.n + j
         if (i === j) return
-        if (s === null || m === null || s === undefined || m === undefined) {
+        if (s === null || m === null) {
           this.min[k] = Infinity
           this.km[k] = Infinity
         } else {
-          if (!Number.isFinite(s) || !Number.isFinite(m) || s < 0 || m < 0) throw new Error('Valor inválido na matriz recebida.')
-          this.min[k] = s / 60
-          this.km[k] = m / 1000
+          this.min[k] = s! / 60
+          this.km[k] = m! / 1000
         }
         this.estimado[k] = 0
       }),
     )
+  }
+
+  /** Marca um par como SEM percurso (ponto isolado como "sem rota" pelo provedor). */
+  semPercursoPar(i: number, j: number) {
+    if (i === j) return
+    const k = i * this.n + j
+    this.min[k] = Infinity
+    this.km[k] = Infinity
+    this.estimado[k] = 0
   }
 
   /** Preenche UM par com estimativa (RB4: 1º trecho offline). Fica marcado como estimado. */

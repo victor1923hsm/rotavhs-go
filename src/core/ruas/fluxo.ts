@@ -55,7 +55,15 @@ export interface ResultadoFluxo {
 /** Tentativas por pedido (a 1ª + até 3 novas). Nunca ilimitado. */
 export const MAX_TENTATIVAS = 4
 // Sem conexão não é repetido (falha logo, com mensagem clara; você tenta de novo quando quiser).
-const REPETIVEIS = new Set(['limite-minuto', 'indisponivel', 'tempo-esgotado'])
+const REPETIVEIS = new Set(['limite-minuto', 'indisponivel', 'tempo-esgotado', 'resposta-incompleta'])
+/**
+ * Bloco de matriz inteiro sem percurso (issue #1785 do ORS: um ponto sem rota pode anular o bloco todo). Os pontos do
+ * bloco são testados por bissecção (S × S) até achar o(s) ponto(s) sem rota; os pares deles ficam "sem percurso" e o
+ * resto do bloco é pedido de novo sem eles. Pedidos extras limitados por rota (o que passar disso fica sem percurso).
+ */
+export const MAX_PEDIDOS_DIVISAO = 40
+/** Maior S tal que S × S cabe num pedido do ORS (3500 pares). */
+const LADO_TESTE = 59
 
 async function comTentativas<T>(fazer: () => Promise<T>, amb: AmbienteFluxo, sinal?: AbortSignal): Promise<T> {
   for (let t = 0; ; t++) {
@@ -66,7 +74,7 @@ async function comTentativas<T>(fazer: () => Promise<T>, amb: AmbienteFluxo, sin
       if (!(e instanceof FalhaProvedor)) throw e
       if (sinal?.aborted) throw new FalhaProvedor('cancelado')
       if (!REPETIVEIS.has(e.tipo) || t + 1 >= MAX_TENTATIVAS) throw e
-      await amb.esperar(esperaNovaTentativa(t, e.esperarMs), sinal)
+      await amb.esperar(esperaNovaTentativa(t, e.esperarMs, e.tipo === 'resposta-incompleta'), sinal)
     }
   }
 }
@@ -152,6 +160,9 @@ export async function roteirizar(
   const destinosM = destinoLocal === undefined ? paradasLocais : [...paradasLocais, destinoLocal]
   const blocos = planejarFaltantes(origensM, destinosM, (i, j) => mont.conhecido(i, j), provedor.limites.maxParesMatriz)
   let feitos = 0
+  let total = blocos.length
+  let extras = 0
+  const suspeitos: { origens: number[]; destinos: number[] }[] = []
   const fila = [...blocos]
   const trabalhador = async () => {
     for (;;) {
@@ -160,8 +171,72 @@ export async function roteirizar(
       const r = await pedir(janelaMat, () => provedor.matriz(coords, b.origens, b.destinos, perfil, sinal))
       rel.pedidos.matriz++
       rel.bytesRecebidos += r.bytes ?? 0
-      mont.aplicar(r)
-      amb.aoProgresso?.('matriz', ++feitos / blocos.length, feitos, blocos.length)
+      // Suspeita da issue #1785: guardado para isolar depois (sem aplicar o bloco nulo).
+      if (MontagemMatriz.blocoTodoNulo(r) && new Set([...b.origens, ...b.destinos]).size > 2) suspeitos.push(b)
+      else mont.aplicar(r)
+      amb.aoProgresso?.('matriz', Math.min(1, ++feitos / total), feitos, total)
+    }
+  }
+  /** Um ponto que já respondeu com valores (para testar sozinho um ponto suspeito). */
+  let bom: number | undefined
+  /** Pontos que ficaram sozinhos antes de haver um ponto bom conhecido: testados de novo no fim. */
+  const indecisos: number[] = []
+  const pedirTeste = async (T: number[]) => {
+    extras++
+    rel.pedidos.divisoes = extras
+    total++
+    const r = await pedir(janelaMat, () => provedor.matriz(coords, T, T, perfil, sinal))
+    rel.pedidos.matriz++
+    rel.bytesRecebidos += r.bytes ?? 0
+    amb.aoProgresso?.('matriz', Math.min(1, ++feitos / total), feitos, total)
+    if (MontagemMatriz.blocoTodoNulo(r)) return false
+    mont.aplicar(r)
+    return true
+  }
+  /** Devolve os pontos de S sem rota (bissecção S × S). O que o orçamento não cobrir fica sem percurso no fim. */
+  const isolar = async (S: number[]): Promise<number[]> => {
+    if (extras >= MAX_PEDIDOS_DIVISAO) return []
+    if (S.length === 1) {
+      if (bom === undefined) {
+        indecisos.push(S[0]!)
+        return []
+      }
+      return (await pedirTeste([S[0]!, bom])) ? [] : S
+    }
+    if (await pedirTeste(S)) {
+      bom ??= S[0]
+      return []
+    }
+    const meio = Math.ceil(S.length / 2)
+    return [...(await isolar(S.slice(meio))), ...(await isolar(S.slice(0, meio)))]
+  }
+  const tratarSuspeitos = async () => {
+    if (!suspeitos.length || interrompido) return
+    const pts = [...new Set(suspeitos.flatMap((b) => [...b.origens, ...b.destinos]))]
+    const ruins: number[] = []
+    // Um ponto que já veio com valores na fase normal serve de referência.
+    for (let i = 0; i < mont.n && bom === undefined; i++) for (let j = 0; j < mont.n; j++) if (i !== j && mont.alcanca(i, j)) { bom = i; break }
+    for (let k = 0; k < pts.length; k += LADO_TESTE) ruins.push(...(await isolar(pts.slice(k, k + LADO_TESTE))))
+    for (const x of indecisos.splice(0)) if (bom !== undefined && extras < MAX_PEDIDOS_DIVISAO) ruins.push(...(await isolar([x])))
+    const r = new Set(ruins)
+    for (const b of suspeitos)
+      for (const i of b.origens) for (const j of b.destinos) if (r.has(i) || r.has(j)) mont.semPercursoPar(i, j)
+    // O resto dos blocos suspeitos (sem os pontos ruins) é pedido de novo; o que o orçamento não cobrir fica sem percurso.
+    for (const b of suspeitos) {
+      const novos = planejarFaltantes(b.origens, b.destinos, (i, j) => mont.conhecido(i, j), provedor.limites.maxParesMatriz)
+      for (const nb of novos) {
+        if (extras >= MAX_PEDIDOS_DIVISAO) break
+        extras++
+        rel.pedidos.divisoes = extras
+        total++
+        const res = await pedir(janelaMat, () => provedor.matriz(coords, nb.origens, nb.destinos, perfil, sinal))
+        rel.pedidos.matriz++
+        rel.bytesRecebidos += res.bytes ?? 0
+        // Ainda todo nulo (ponto ruim não isolado): não aplica; os pares ficam sem percurso abaixo.
+        if (!MontagemMatriz.blocoTodoNulo(res)) mont.aplicar(res)
+        amb.aoProgresso?.('matriz', Math.min(1, ++feitos / total), feitos, total)
+      }
+      for (const i of b.origens) for (const j of b.destinos) if (i !== j && !mont.conhecido(i, j)) mont.semPercursoPar(i, j)
     }
   }
   try {
@@ -169,6 +244,7 @@ export async function roteirizar(
     const resultados = await Promise.allSettled(Array.from({ length: n }, trabalhador))
     const falha = resultados.find((x): x is PromiseRejectedResult => x.status === 'rejected')
     if (falha) parar(falha.reason)
+    else await tratarSuspeitos().catch(parar)
   } finally {
     rel.tempos.matrizMs = amb.agora() - t1
   }

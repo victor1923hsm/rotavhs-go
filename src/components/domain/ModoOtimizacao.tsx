@@ -50,14 +50,17 @@ export function useDisparoOtimizacao() {
 }
 
 const JanelaRuas = lazy(() => import('./JanelaRuas'))
+const ResultadoRuas = lazy(() => import('./ResultadoRuas'))
 
 /** A janela só é baixada quando você toca em OTIMIZAR no modo "Pelas ruas reais" (G14: JS inicial ≤ 150 KB). */
 export function AvisoRuas() {
   const aviso = useRuas((r) => r.avisoRuas)
-  if (!aviso) return null
+  const resultado = useEstado((e) => !!e.resultadoRuas)
+  if (!aviso && !resultado) return null
   return (
     <Suspense fallback={null}>
-      <JanelaRuas />
+      {aviso && <JanelaRuas />}
+      {resultado && <ResultadoRuas />}
     </Suspense>
   )
 }

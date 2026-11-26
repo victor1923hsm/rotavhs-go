@@ -5,7 +5,9 @@
 // - Nenhuma parada é eliminada: sem acesso/percurso = "pendente de revisão", mantida na posição anterior.
 // - Falhas viram mensagens claras; o modo nunca é trocado em silêncio (a janela oferece a otimização rápida).
 import { chaveCoordenada } from '@/core/ruas/cache'
-import { CacheMatriz } from '@/core/ruas/cacheMatriz'
+import { CacheMatriz, type MotivoRevisao, type ParadaEmRevisao } from '@/core/ruas/cacheMatriz'
+import { cabeNaCota, lerConsumo, registrarPedido, registrarRestante, restanteHoje, type ServicoConsumo } from '@/core/ruas/consumo'
+import { planejarRota } from '@/core/ruas/blocos'
 import { roteirizar } from '@/core/ruas/fluxo'
 import { trechosSemPercurso } from '@/core/ruas/montagem'
 import { ehBaseDeTeste, provedorORS } from '@/core/ruas/ors'
@@ -36,6 +38,9 @@ export const MENSAGENS: Record<string, string> = {
   'tempo-esgotado': 'O provedor demorou demais para responder. A rota atual continua valendo.',
   'sem-conexao': 'Sem conexão com a internet. O cálculo pelas ruas precisa de conexão; a otimização rápida funciona sem internet.',
   requisicao: 'O provedor recusou o pedido. A rota atual continua valendo.',
+  'resposta-incompleta': 'O provedor mandou respostas incompletas (mesmo depois das novas tentativas). Nada foi aplicado; a rota atual continua valendo.',
+  'cota-ou-chave': 'O provedor recusou o acesso: a cota do dia acabou OU a chave não tem acesso (a resposta não diz qual). A rota atual continua valendo.',
+  'cota-local': 'O consumo previsto passa do que ainda resta hoje na cota do provedor (pela conta deste aparelho). Nada foi enviado; a rota atual continua valendo.',
   bloqueado: 'O envio de coordenadas ao provedor real ainda não está liberado nesta versão (termos de uso e sua autorização específica pendentes).',
   cancelado: 'Cálculo cancelado. A rota continua como estava.',
   'sem-chave': 'Nenhuma chave da API cadastrada. Cadastre em "Calcular pelas ruas".',
@@ -50,6 +55,58 @@ export const MENSAGENS: Record<string, string> = {
 const falha = (m: keyof typeof MENSAGENS & string) => new FalhaRuas(m as FalhaRuas['motivo'], MENSAGENS[m]!)
 
 export const NOME_PROVEDOR = 'OpenRouteService (HeiGIT)'
+
+const armazem = () => {
+  try {
+    return localStorage
+  } catch {
+    return null
+  }
+}
+/** Consumo de hoje (contador local + último restante informado pelo provedor). Só números. */
+export function consumoHoje() {
+  const c = lerConsumo(armazem(), 'ors', Date.now())
+  return { pedidos: c.pedidos, resta: restanteHoje(c, LIMITES_ORS), limites: LIMITES_ORS.porDia }
+}
+
+/** Correções confirmadas e raios autorizados desta rota (para a tela de revisão). */
+export async function lerDecisoes(rotaId: string) {
+  const cache = CacheMatriz.abrir(await persistenciaAtual()?.arm.lerMatrizRuas(rotaId).catch(() => null), 'ors', 'carro', Date.now())
+  return { correcoes: cache.correcoes, raios: cache.raios, revisao: cache.revisao }
+}
+
+/**
+ * Grava uma decisão SUA sobre uma parada (confirmada na tela de revisão): coordenada corrigida, restauração da
+ * original ou raio maior autorizado. Os trechos afetados são esquecidos no cache (serão pedidos de novo).
+ * A coordenada ORIGINAL da parada nunca é alterada.
+ */
+export async function gravarDecisao(
+  rotaId: string,
+  id: string,
+  original: { lat: number; lon: number },
+  d: { tipo: 'corrigir'; lat: number; lon: number } | { tipo: 'restaurar' } | { tipo: 'raio'; raioM: number },
+) {
+  const arm = persistenciaAtual()?.arm
+  if (!arm) throw new Error('Armazenamento indisponível')
+  const cache = CacheMatriz.abrir(await arm.lerMatrizRuas(rotaId).catch(() => null), 'ors', 'carro', Date.now())
+  const antiga = cache.correcoes[id]
+  if (d.tipo === 'corrigir') {
+    if (!Number.isFinite(d.lat) || !Number.isFinite(d.lon) || Math.abs(d.lat) > 90 || Math.abs(d.lon) > 180) throw new Error('Coordenada inválida')
+    if (antiga) cache.esquecerPonto(antiga)
+    cache.esquecerPonto(original)
+    cache.correcoes[id] = { lat: Math.round(d.lat * 1e6) / 1e6, lon: Math.round(d.lon * 1e6) / 1e6, em: Date.now() }
+    delete cache.raios[id]
+  } else if (d.tipo === 'restaurar') {
+    if (antiga) cache.esquecerPonto(antiga)
+    cache.esquecerPonto(original)
+    delete cache.correcoes[id]
+    delete cache.raios[id]
+  } else {
+    cache.raios[id] = d.raioM
+    cache.esquecerPonto(antiga ?? original)
+  }
+  await arm.salvarMatrizRuas(rotaId, cache.serializar())
+}
 
 function baseAtual(): string {
   return baseDeTeste() ?? ORS_BASE
@@ -70,11 +127,18 @@ export interface Estimativa {
   esperaMinimaS: number
   cotaDiariaMatriz: number
   fonte: string
+  /** Quanto resta hoje (contador local / provedor) e o serviço que não caberia, se algum. */
+  restaHoje: Record<ServicoConsumo, number>
+  excede: ServicoConsumo | null
+  /** Traçado pelas ruas (RB-4, ainda NÃO usado): pedidos de directions que a rota inteira custaria. */
+  pedidosTracadoRB4: number
 }
 
 /** Estimativa de consumo ANTES de começar (usa o cache da rota). A sua posição ainda não é conhecida: conta 1 linha. */
-export async function estimarConsumo(rotaId: string, paradas: readonly { lat: number; lon: number }[], voltarAoInicio: boolean): Promise<Estimativa> {
+export async function estimarConsumo(rotaId: string, paradasOriginais: readonly { id?: string; lat: number; lon: number }[], voltarAoInicio: boolean): Promise<Estimativa> {
   const cache = CacheMatriz.abrir(await persistenciaAtual()?.arm.lerMatrizRuas(rotaId).catch(() => null), 'ors', 'carro', Date.now())
+  // Paradas com correção confirmada entram pela coordenada corrigida (como no cálculo).
+  const paradas = paradasOriginais.map((p) => (p.id && cache.correcoes[p.id]) || p)
   const acessos = paradas.map((p) => cache.acessoConhecido(p))
   const semAcesso = acessos.filter((a) => !a).length
   // índices: 0 = origem (desconhecida), 1..n = paradas, n+1 = destino (se voltar)
@@ -96,10 +160,16 @@ export async function estimarConsumo(rotaId: string, paradas: readonly { lat: nu
   let paresDoCache = 0
   for (const i of idx) for (const j of idx) if (i !== j && conhecido(i, j)) paresDoCache++
   const porMin = Math.floor(LIMITES_ORS.porMinuto.matriz * 0.9)
+  const pedidosEncaixeMax = 4 * (1 + (semAcesso ? Math.ceil(semAcesso / LIMITES_ORS.maxPontosEncaixe) : 0))
+  const resta = consumoHoje().resta
   return {
+    restaHoje: resta,
+    // Conta o pior caso do encaixe (4 raios) para nunca começar algo que não cabe.
+    excede: cabeNaCota({ matriz: blocos.length, encaixe: pedidosEncaixeMax }, resta),
+    pedidosTracadoRB4: planejarRota(n + 1 + (voltarAoInicio ? 1 : 0), LIMITES_ORS.maxPontosRota).length,
     paradas: n,
     pedidosEncaixe: 1 + (semAcesso ? 1 : 0),
-    pedidosEncaixeMax: 4 * (1 + (semAcesso ? Math.ceil(semAcesso / LIMITES_ORS.maxPontosEncaixe) : 0)),
+    pedidosEncaixeMax,
     pedidosMatriz: blocos.length,
     paresDoCache,
     esperaMinimaS: blocos.length <= porMin ? 0 : Math.ceil(blocos.length / porMin - 1) * 60,
@@ -137,13 +207,38 @@ export async function prepararPelasRuas(c: ContextoPreparacao): Promise<Preparad
     throw new FalhaRuas('chave', 'Não foi possível ler a chave no cofre seguro.')
   }
   if (!chave) throw falha('sem-chave')
-  const provedor = provedorORS({ chave, fetch: (u, i) => fetch(u, i), base: baseAtual(), liberadoReal: ENVIO_REAL_LIBERADO })
+  const provedor = provedorORS({
+    chave, fetch: (u, i) => fetch(u, i), base: baseAtual(), liberadoReal: ENVIO_REAL_LIBERADO,
+    aoPedir: (sv) => registrarPedido(armazem(), 'ors', sv, Date.now()),
+    aoResponder: (sv, resta) => resta !== undefined && registrarRestante(armazem(), 'ors', sv, resta, Date.now()),
+  })
   chave = null
 
   const arm = persistenciaAtual()?.arm
   const cache = CacheMatriz.abrir(await arm?.lerMatrizRuas(c.rotaId).catch(() => null), 'ors', 'carro', Date.now())
   const voltar = c.tarefa.termino?.tipo === 'ponto'
-  const pontos = c.tarefa.pontos
+  // Paradas com correção SUA confirmada: o cálculo usa a coordenada corrigida (a original da parada não muda).
+  const ultimaParada = voltar ? c.tarefa.pontos.length - 2 : c.tarefa.pontos.length - 1
+  const idDoPonto = (i: number) => (i >= 1 && i <= ultimaParada ? c.pend[i - 1] : undefined)
+  const pontos = c.tarefa.pontos.map((p, i) => {
+    const id = idDoPonto(i)
+    const cor = id ? cache.correcoes[id] : undefined
+    return cor ? { lat: cor.lat, lon: cor.lon } : p
+  })
+  // Cota do dia: estimativa pelo pior caso; se não couber, nada é enviado.
+  {
+    const est = await estimarConsumo(c.rotaId, c.pend.map((id, k) => ({ id, ...c.tarefa.pontos[k + 1]! })), voltar)
+    if (est.excede) throw falha('cota-local')
+  }
+  const acessoInicial = (i: number) => {
+    if (i === 0 || (voltar && i === pontos.length - 1)) return undefined
+    const a = cache.acessoConhecido(pontos[i]!)
+    const raio = cache.raios[idDoPonto(i)!]
+    // Raio maior autorizado por você e ainda não tentado: o encaixe tenta só esse raio.
+    if (a && a.situacao === 'confirmar' && raio && raio > (a.raioM ?? 0)) a.raioConfirmadoM = raio
+    if (!a && raio) return { original: { ...pontos[i]! }, acesso: null, distanciaM: null, raioM: 200, situacao: 'confirmar' as const, raioConfirmadoM: raio }
+    return a
+  }
   const exec = async () =>
     roteirizar(
       provedor,
@@ -160,7 +255,7 @@ export async function prepararPelasRuas(c: ContextoPreparacao): Promise<Preparad
       {
         terminoLivre: c.termino.tipo === 'livre',
         destinoFinal: voltar,
-        acessosConhecidos: pontos.map((p, i) => (i === 0 || (voltar && i === pontos.length - 1) ? undefined : cache.acessoConhecido(p))),
+        acessosConhecidos: pontos.map((_, i) => acessoInicial(i)),
         preencher: (m, coords) => cache.preencher(m, coords),
       },
     )
@@ -177,9 +272,22 @@ export async function prepararPelasRuas(c: ContextoPreparacao): Promise<Preparad
     } else if (e instanceof FalhaProvedor) throw falha(e.tipo)
     else throw e
   }
+  // Paradas que ficam de fora, com o motivo (para a tela de revisão).
+  const motivoDe = (i: number): MotivoRevisao | null => {
+    const a = r.acessos[i]!
+    if (a.situacao === 'confirmar') return 'confirmar'
+    if (a.situacao === 'revisar') return a.motivoRevisao === 'sem-percurso' ? 'sem-percurso' : 'sem-via'
+    return null
+  }
+  const revisao: ParadaEmRevisao[] = []
+  for (let i = 1; i <= ultimaParada; i++) {
+    const m = motivoDe(i)
+    if (m) revisao.push({ id: idDoPonto(i)!, motivo: m })
+  }
   // Guarda o que veio (mesmo se interrompido), só para esta rota.
-  if (r.montagem && arm) {
-    cache.atualizar(r.montagem, r.coords, r.acessos)
+  if (arm) {
+    if (r.montagem) cache.atualizar(r.montagem, r.coords, r.acessos)
+    if (!r.interrompido) cache.revisao = revisao
     await arm.salvarMatrizRuas(c.rotaId, cache.serializar()).catch(() => {})
   }
   if (r.interrompido) throw r.interrompido.codigo === 2010 && r.interrompido.tipo === 'requisicao' ? falha('sem-origem') : falha(r.interrompido.tipo)
@@ -209,6 +317,10 @@ export async function prepararPelasRuas(c: ContextoPreparacao): Promise<Preparad
   return {
     tarefa,
     revisar,
+    motivos: revisao,
+    pedidos: { matriz: r.relatorio.pedidos.matriz, encaixe: r.relatorio.pedidos.encaixe, divisoes: r.relatorio.pedidos.divisoes ?? 0 },
+    corrigidas: c.pend.filter((id) => cache.correcoes[id]).length,
+    simulado: provedor.deTeste,
     fonte: provedor.deTeste ? 'servidor de teste' : NOME_PROVEDOR,
     validar: (ordem) => {
       const seq = [0, ...ordem.map((id) => posMotor.get(id)!)]

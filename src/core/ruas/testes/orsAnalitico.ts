@@ -9,6 +9,12 @@ export interface OpcoesAnalitico {
   inacessiveis?: { lat: number; lon: number }[]
   soChegada?: { lat: number; lon: number }[]
   semVia?: { lat: number; lon: number }[]
+  /** Rua mais próxima a `m` metros: o snap só encaixa com raio ≥ m (RB-3: raio maior autorizado). */
+  semViaAte?: { lat: number; lon: number; m: number }[]
+  /** Simula a issue #1785 do ORS: se o bloco contém um destes pontos, a matriz INTEIRA vem nula. */
+  anulaBloco?: { lat: number; lon: number }[]
+  /** Nas primeiras k respostas de matriz, falta uma linha (resposta incompleta). */
+  incompletas?: number
   limiteACada?: number
   cotaDepoisDe?: number
   falhas5xx?: number
@@ -44,10 +50,17 @@ export function orsAnalitico(o: OpcoesAnalitico = {}) {
     if (o.travar) return new Promise<never>((_, nao) => init.signal.addEventListener('abort', () => nao(new DOMException('abortado', 'AbortError')), { once: true }))
     if (init.headers.Authorization !== chave) return resp(403, { error: 'Access to this API has been disallowed' })
     if (o.falhas5xx && estado.pedidos <= o.falhas5xx) return resp(503, { error: 'indisponível' })
-    const c = JSON.parse(init.body) as { locations?: [number, number][]; coordinates?: [number, number][]; sources?: number[]; destinations?: number[] }
+    const c = JSON.parse(init.body) as { locations?: [number, number][]; coordinates?: [number, number][]; sources?: number[]; destinations?: number[]; radius?: number }
     if (url.includes('/snap/')) {
       estado.snap++
-      return resp(200, { locations: c.locations!.map((p) => (perto(p, o.semVia) ? null : { location: [p[0], p[1]], name: 'Rua Fictícia', snapped_distance: 3.2 })) })
+      return resp(200, {
+        locations: c.locations!.map((p) => {
+          if (perto(p, o.semVia)) return null
+          const longe = (o.semViaAte ?? []).find((q) => perto(p, [q]))
+          if (longe) return (c.radius ?? 0) >= longe.m ? { location: [p[0] + 0.00001, p[1]], name: 'Rua Fictícia', snapped_distance: longe.m - 1 } : null
+          return { location: [p[0], p[1]], name: 'Rua Fictícia', snapped_distance: 3.2 }
+        }),
+      })
     }
     if (url.includes('/matrix/')) {
       const k = estado.matriz + estado.recusados429 + 1
@@ -58,6 +71,11 @@ export function orsAnalitico(o: OpcoesAnalitico = {}) {
       if (o.cotaDepoisDe !== undefined && estado.matriz >= o.cotaDepoisDe) return resp(403, { error: 'Quota exceeded' }, { 'x-ratelimit-remaining': '0' })
       estado.matriz++
       const L = c.locations!
+      if (o.incompletas && estado.matriz <= o.incompletas) return resp(200, { durations: [[0]], distances: [[0]] })
+      if (o.anulaBloco && L.some((p) => perto(p, o.anulaBloco))) {
+        const nulos = c.sources!.map(() => c.destinations!.map(() => null))
+        return resp(200, { durations: nulos, distances: nulos, metadata: { engine: { version: '9.0.0', graph_date: o.versao ?? '2026-11-20T00:00:00Z' } } })
+      }
       const val = (s: number, d: number): [number | null, number | null] => {
         if (s === d) return [0, 0]
         const a = L[s]!, b = L[d]!
