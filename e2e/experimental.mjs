@@ -49,22 +49,27 @@ async function aguardar(fn, ms, passo = 300) {
 }
 async function tocar(page, s, seletor = 'button, a') {
   const b = await aguardar(async () => {
-    const ok = await page.evaluate(({ s, seletor }) => {
-      const el = [...document.querySelectorAll(seletor)].find((b) => (b.textContent?.trim().startsWith(s) || b.getAttribute('aria-label')?.startsWith(s)) && !b.disabled)
-      if (!el) return false
-      el.scrollIntoView({ block: 'center', behavior: 'instant' })
-      return true
-    }, { s, seletor })
-    if (!ok) return null
-    await esperar(400)
-    return page.evaluate(({ s, seletor }) => {
-      const el = [...document.querySelectorAll(seletor)].find((b) => (b.textContent?.trim().startsWith(s) || b.getAttribute('aria-label')?.startsWith(s)) && !b.disabled)
-      if (!el) return null
-      const q = el.getBoundingClientRect()
-      const x = q.left + q.width / 2, y = q.top + q.height / 2
-      const topo = document.elementFromPoint(x, y)
-      return topo === el || el.contains(topo) ? { x, y } : null
-    }, { s, seletor })
+    // Entre os candidatos, o primeiro que estiver livre (pinos podem se sobrepor ou ficar sob o cartão).
+    const n = await page.evaluate(({ s, seletor }) => [...document.querySelectorAll(seletor)].filter((b) => (b.textContent?.trim().startsWith(s) || b.getAttribute('aria-label')?.startsWith(s)) && !b.disabled).length, { s, seletor })
+    for (let i = 0; i < n; i++) {
+      await page.evaluate(({ s, seletor, i }) => {
+        const el = [...document.querySelectorAll(seletor)].filter((b) => (b.textContent?.trim().startsWith(s) || b.getAttribute('aria-label')?.startsWith(s)) && !b.disabled)[i]
+        if (!el?.closest('.maplibregl-map')) el?.scrollIntoView({ block: 'center', behavior: 'instant' })
+        else el.closest('.exp-mapa')?.scrollIntoView({ block: 'center', behavior: 'instant' })
+      }, { s, seletor, i })
+      await esperar(300)
+      const p = await page.evaluate(({ s, seletor, i }) => {
+        const el = [...document.querySelectorAll(seletor)].filter((b) => (b.textContent?.trim().startsWith(s) || b.getAttribute('aria-label')?.startsWith(s)) && !b.disabled)[i]
+        if (!el) return null
+        const q = el.getBoundingClientRect()
+        const x = q.left + q.width / 2, y = q.top + q.height / 2
+        if (x < 0 || y < 0 || x > innerWidth || y > innerHeight) return null
+        const topo = document.elementFromPoint(x, y)
+        return topo === el || el.contains(topo) ? { x, y } : null
+      }, { s, seletor, i })
+      if (p) return p
+    }
+    return null
   }, 20_000)
   if (!b) throw new Error(`"${s}" não encontrado ou coberto`)
   await tocarXY(page, b.x, b.y)

@@ -14,6 +14,13 @@ import { useExperimental } from './estadoExperimental'
 const MapaExperimental = lazy(() => import('./MapaExperimental'))
 const NOME_ETAPA: Record<string, string> = { encaixe: 'Encaixe nas ruas', matriz: 'Distâncias e tempos', algoritmo: 'Melhor ordem', tracado: 'Traçado pelas ruas' }
 
+/** Diferença com sinal; zero (no arredondamento) aparece como "igual", nunca "−0". */
+function dif(v: number, casas: number): string {
+  const r = Number(v.toFixed(casas))
+  if (r === 0) return 'igual'
+  return `${r < 0 ? '−' : '+'}${numero(Math.abs(r), casas)}`
+}
+
 export function TestarRoteirizacao() {
   const x = useExperimental()
   const leitura = useLocalizacao((l) => l.leitura)
@@ -162,7 +169,7 @@ export function TestarRoteirizacao() {
             </table>
             {!c.offline && Number.isFinite(c.rapida.km) && (
               <p className="rotulo" style={{ margin: '8px 0 0', color: 'inherit' }}>
-                A rápida achava {numero(c.rapida.kmModelo)} km pelo modelo (linha reta × 1,35); a mesma ordem medida pelas ruas dá {numero(c.rapida.km)} km. Pelas ruas: {c.ruas.km <= c.rapida.km ? `−${numero(c.rapida.km - c.ruas.km)} km` : `+${numero(c.ruas.km - c.rapida.km)} km`} e {c.ruas.min <= c.rapida.min ? `−${numero(c.rapida.min - c.ruas.min, 0)}` : `+${numero(c.ruas.min - c.rapida.min, 0)}`} min (estimativas do provedor; sem trânsito em tempo real).
+                A rápida achava {numero(c.rapida.kmModelo)} km pelo modelo (linha reta × 1,35); a mesma ordem medida pelas ruas dá {numero(c.rapida.km)} km. Pelas ruas: {dif(c.ruas.km - c.rapida.km, 1)} km e {dif(c.ruas.min - c.rapida.min, 0)} min (estimativas do provedor; sem trânsito em tempo real).
               </p>
             )}
             <p className="rotulo" style={{ margin: '6px 0 0', color: 'inherit' }}>
