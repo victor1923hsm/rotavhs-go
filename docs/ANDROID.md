@@ -66,6 +66,10 @@ Autorizado pelo usuário em 2026-11-25. **Experimental**, instalação manual no
 - Teste no emulador: `e2e/ruas.mjs android` (no workflow `teste-android.yml`, com reinstalação do APK e capturas no artefato `telas-rb1` e no log).
 - **Emulador do teste sem Google Play Services (2026-11-26):** com a imagem Google APIs, o GMS morria e o Android encerrava o app junto (dependência do provedor de fontes do GMS na WebView) — era a causa do "page closed" intermitente. A imagem `default` não tem o GMS; o app não depende dele.
 
+## Rede (RB-2, 2026-11-26)
+- `res/xml/rede.xml`: só HTTPS. O teste automático compila com `-PrvTesteLocal`, que troca esse arquivo por um que aceita HTTP **só para 127.0.0.1** (servidor de respostas controladas via `adb reverse`). O APK entregue não usa essa troca.
+- Envio ao provedor de rotas real **bloqueado** no código (`ENVIO_REAL_LIBERADO = false`).
+
 ## Limitações conhecidas desta versão de testes
 - **Sem service worker no APK.** Os arquivos do app já estão no APK e abrem offline. Porém o cache de mapas ("Limpar mapas guardados") ainda não funciona no APK: sem conexão, a rota continua pela lista.
 - **GPS do navegador (WebView), só com o app aberto.** O GPS nativo com segundo plano é a fase F3, com adaptador separado.

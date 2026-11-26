@@ -341,11 +341,40 @@ Distância indisponível **nunca** é trocada em silêncio por linha reta.
 
 **Consulta à HeiGIT (uso comercial individual): PENDENTE.** Rascunho em ARQUITETURA §17.8; você envia. Até a resposta formal, o ORS é só para desenvolvimento e testes.
 
-## P-COORD · Coordenadas dos destinatários como dado pessoal — **PROPOSTA, aguardando sua confirmação antes da integração real (RB-2)**
+## P-COORD · Coordenadas dos destinatários como dado pessoal — **APROVADA com condições em 2026-11-26 12:39 (ver abaixo)**
 Coordenadas de entrega podem identificar uma pessoa mesmo sem nome e endereço (LGPD: dado pessoal quando permitem identificar). Proposta de tratamento:
 1. **Envio:** só com a sua autorização expressa no app (G4), revogável; só coordenadas (6 casas) e parâmetros técnicos, conferidos pela guarda de carga (`privacidade.ts`). A sua posição também é coordenada pessoal (sua).
 2. **Minimização:** o provedor recebe as coordenadas de acesso viário (o ponto na rua), não ids, ordem da SPX nem número da parada; os pedidos de matriz não dizem qual ponto é "entrega".
 3. **Retenção no aparelho:** matriz, encaixes e traçado ficam só enquanto a rota existir e são apagados ao finalizar, encerrar ou substituir a rota (mesma regra da Etapa 3); validade máxima do cache de 7 dias.
 4. **Retenção no provedor:** fora do nosso controle; registrar a política do ORS (ou do servidor próprio) antes de ligar; servidor próprio permite "sem registro de pedidos".
 5. **Logs:** nenhum log com coordenadas, chave ou respostas; relatórios só com contagens e tempos.
+
+## RB-1 · Aprovada tecnicamente (2026-11-26 12:39)
+Validação física do **APK teste.9 no S23 FE: pendente**.
+
+## P-COORD · APROVADA com condições (2026-11-26 12:39)
+1. Enviar **só** as coordenadas necessárias ao cálculo (origem e destino quando necessários).
+2. **Autorização explícita** antes do primeiro envio, **informando o provedor** que recebe os dados.
+3. Nunca enviar nomes, telefones, endereços em texto, identificadores de encomendas ou planilhas.
+4. **Não** enviar continuamente a localização do motorista ao provedor.
+5. **Não** enviar coordenadas para telemetria ou serviços de análise.
+6. **Excluir** os dados associados à rota quando ela for encerrada ou excluída.
+7. **Verificar a compatibilidade com a LGPD e os termos do provedor antes de habilitar o envio real.**
+
+## RB-2 · Autorizada em 2026-11-26 12:39
+| Requisito | Resumo |
+|---|---|
+| Integração | Cliente do provedor pela `RoutingProvider`, testado com respostas controladas |
+| Segurança | `CofreChave`; chave e coordenadas fora de logs, erros, relatórios e telemetria |
+| Consumo | Limite de pedidos, concorrência, tempo limite, cancelamento, 429, estimativa antes de otimizar; **nada de tentativas ilimitadas** |
+| Rotas grandes | 50/100/150/200/300/500; divisão da matriz pelos limites oficiais; **nenhuma parada eliminada** |
+| Cache | Local, **≤ 7 dias**, por provedor, veículo, versão dos dados e finalidade (a rota) |
+| Motor atual | Modo rápido funcionando, inclusive sem internet; falha do provedor → oferecer rápida ou cancelar; **nunca trocar o modo em silêncio** |
+| Experiência | Progresso real das etapas, cancelamento, rota anterior preservada até aplicar o novo resultado |
+| Desempenho | JS inicial < 150 KB; RB-2 sob demanda |
+| Validação | Mão única, assimetria, inacessíveis, sem saída, sem conexão, chave inválida, limite, cancelamento, reotimização |
+| Restrições | Só v2-dev; main, PWA publicado e RotaVHS original intocados; **não iniciar a R-C**; sem coordenadas reais nos testes; **nenhuma chamada ao provedor real** até a confirmação dos termos e sua autorização específica |
+| Entrega | Resultados, benchmarks, consumo estimado, riscos, limitações, arquivos; **APK teste.10** só depois dos testes automatizados e do emulador, dizendo o que não foi validado com o provedor real |
+
+**Envio real:** bloqueado no código (`ENVIO_REAL_LIBERADO = false` em `src/app/ruas.ts`). Liberar exige: resposta da HeiGIT, conferência LGPD/termos e sua autorização específica.
 

@@ -974,7 +974,7 @@ Xeon 2,3 GHz, 2 núcleos, Node. Malha fictícia 70 × 70 quarteirões com mão �
 7. Suíte completa e o teste do emulador (funcionalidades do teste.8) passando na v2-dev; main sem alteração.
 8. Escolha do cofre (C, `@aparajita` fixado, ou outra) — **decisão sua para a RB-1**.
 
-## 18. RB-1 — cofre da chave e central "Calcular pelas ruas" (autorizada em 2026-11-26 10:22)
+## 18. RB-1 — cofre da chave e central "Calcular pelas ruas" (autorizada em 2026-11-26 10:22; **aprovada tecnicamente em 12:39**, validação no S23 FE pendente)
 Nada de rede: **nenhuma chamada a provedor de rotas**. O motor atual continua sendo o único que calcula.
 
 ### 18.1 Cofre (opção C: plugin nativo próprio)
@@ -1020,4 +1020,72 @@ Nada de rede: **nenhuma chamada a provedor de rotas**. O motor atual continua se
 - Falhas transitórias do Keystore que pareçam invalidação apagam a chave: você precisa cadastrar de novo (preferimos isso a manter material inconsistente).
 - Desligar o log da ponte Capacitor também reduz o diagnóstico do emulador (logs do Capacitor no logcat).
 - Teclados com aprendizado: o campo é de senha (o Android não aprende o texto), mas colar da área de transferência deixa a chave no histórico do teclado — recomendação: limpar a área de transferência depois de colar.
+
+## 19. RB-2 — cliente do provedor, cache e otimização pelas ruas (autorizada em 2026-11-26 12:39)
+**Nenhuma chamada ao provedor real.** O envio ao ORS real está bloqueado no código (`ENVIO_REAL_LIBERADO = false`, `src/app/ruas.ts`; o cliente recusa antes do `fetch`). Tudo foi testado com **respostas controladas**: o "ORS falso" sobre a malha fictícia (`testes/orsFalso.ts`), o "ORS analítico" (`testes/orsAnalitico.ts`) e o servidor HTTP `e2e/ors-falso.mjs` no emulador e no navegador.
+
+### 19.1 Peças
+| Arquivo | Papel |
+|---|---|
+| `src/core/ruas/ors.ts` | Cliente ORS v2 pela `RoutingProvider`: `snap`, `matrix` (só os pontos do bloco, índices remapeados), `directions/geojson` (pronto para a RB-4). Chave só no cabeçalho `Authorization`; corpo conferido pela guarda de privacidade; `credentials: 'omit'`, `no-referrer`, `no-store`. Tempo limite (30 s) e cancelamento por `AbortSignal`. 401/403 chave · 403 com cota → cota do dia · 429 com `Retry-After` · 5xx · sem conexão · tempo esgotado · bloqueado. O nome da rua que o snap devolve é descartado |
+| `src/core/ruas/fluxo.ts` | Encaixe progressivo → matriz em blocos (só o que falta) com **concorrência 2**, **limite por minuto com folga de 90%**, **no máximo 4 tentativas por pedido** (429, 5xx, tempo esgotado; sem conexão não repete) e parada limpa em chave/cota/bloqueio. Destino fixo (voltar ao início). Parada sem saída como última no término livre |
+| `src/core/ruas/cacheMatriz.ts` | Cache **por rota** (tabela `distanceCache`, apagada com a rota): acessos viários e pares recebidos, por coordenada de acesso e com sentido; **validade de 7 dias**; só para o mesmo provedor e perfil; versão dos dados do mapa diferente → descartado e refeito uma vez. Também lembra "sem rua até 200 m" (não repete tentativas) |
+| `src/app/ruasOtimizacao.ts` (**sob demanda**, 8,3 KB gzip) | Liga cofre → cliente → fluxo → motor. Estimativa de consumo antes de começar. Mensagens claras por tipo de falha. Paradas sem acesso/percurso = **pendentes de revisão**, nunca eliminadas |
+| `src/components/domain/JanelaRuas.tsx` (**sob demanda**, 2,3 KB gzip) | Antes de calcular: chave → liberação do envio → **sua autorização** (provedor nomeado, o que vai e o que nunca vai) → **estimativa de consumo**. Em todos os passos: "Usar a otimização rápida" ou "Cancelar" |
+| `src/app/estado.ts` | `otimizar/recalcular({ preparar })`: etapas reais (posição → encaixe → distâncias "k de N pedidos" → melhor ordem), cancelamento que aborta os pedidos, a rota anterior só muda ao aplicar; falha guarda o modo (`falhaModo`) e a janela oferece a rápida (nunca troca sozinha). Pendentes de revisão voltam para a posição relativa que tinham (`inserirMantendoPosicao`) |
+
+### 19.2 Regras da P-COORD no código
+- Só coordenadas (6 casas) e parâmetros técnicos saem; a guarda recusa qualquer outro texto (testado: os únicos textos enviados são `distance`, `duration` e `m`).
+- Autorização explícita antes do primeiro envio, com o nome do provedor; revogável na central.
+- A sua posição só é enviada no momento do cálculo (1 linha da matriz + 1 encaixe), nunca de forma contínua; nenhum pedido em segundo plano.
+- Nada de telemetria: o app não tem serviço de análise; o relatório de consumo fica na memória.
+- O cache é da rota e é apagado com ela (finalizar, encerrar, excluir, substituir).
+- **Antes do envio real:** resposta da HeiGIT, conferência LGPD e termos, e sua autorização específica.
+
+### 19.3 Rede no Android
+- `res/xml/rede.xml`: só HTTPS (`cleartextTrafficPermitted=false`).
+- **Só no APK do teste automático** (`gradle -PrvTesteLocal`): HTTP permitido apenas para `127.0.0.1` (servidor de respostas controladas via `adb reverse`). O APK de testes entregue é compilado sem essa propriedade.
+
+### 19.4 Benchmarks (malha fictícia, cliente ORS completo sobre o "ORS falso", CPU de nuvem Xeon 2,3 GHz)
+| Paradas | No motor | Confirmar · revisar | Pedidos encaixe · matriz · traçado previsto | Espera mínima (limite/min) | Recebido (matriz, JSON) | Enviado | Cache da rota | Motor | Cliente + malha | Reotimização (matriz · encaixe) | Rotas/dia na cota |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| 50 | 50 | 0 · 0 | 3 · 1 · 2 | 0 s | 26 KB | 5 KB | 54 KB | 0,12 s | 0,32 s | 1 · 1 | 500 |
+| 100 | 94 | 6 · 0 | 4 · 3 · 3 | 0 s | 93 KB | 15 KB | 148 KB | 0,26 s | 0,47 s | 1 · 1 | 166 |
+| 150 | 150 | 0 · 0 | 3 · 7 · 4 | 0 s | 232 KB | 39 KB | 336 KB | 0,36 s | 0,66 s | 1 · 1 | 71 |
+| 200 | 184 | 12 · 4 | 4 · 11 · 5 | 0 s | 371 KB | 71 KB | 570 KB | 0,33 s | 0,99 s | 1 · 2 | 41 |
+| 300 | 290 | 7 · 3 | 4 · 27 · 7 | 0 s | 903 KB | 236 KB | 1,4 MB | 0,50 s | 1,46 s | 1 · 3 | 17 |
+| 500 | 484 | 10 · 6 | 4 · 71 · 11 | 60 s | 2,5 MB | 980 KB | 3,3 MB | 0,60 s | 2,63 s | 1 · 2 | 6 |
+
+- "Cliente + malha" inclui o cálculo de caminhos da malha fictícia (o servidor falso): é um teto do custo do cliente, sem rede.
+- O tempo real com o ORS será dominado pela rede e pelo limite de 36 pedidos/min (500 paradas: pelo menos ~1 min só de espera). **Não medido com o provedor real.**
+- Reotimização das pendentes: **1 pedido de matriz** (a linha da sua nova posição) e 1–3 de encaixe (a sua posição, raios progressivos), graças ao cache.
+- Cota diária do plano gratuito (500 pedidos de matriz/dia): ~6 primeiras otimizações de 500 paradas por dia; as reotimizações custam 1.
+
+### 19.5 Resultados reais dos testes (2026-11-26)
+- **Vitest:** 318/318 (+1 bancada pulada) — inclui `ors.test.ts` (bloqueio do ORS real, chave só no cabeçalho, só textos técnicos no corpo, nome da rua descartado, sem conexão, 5xx, 429 com Retry-After, cota, tempo limite, cancelamento, tentativas limitadas, 100 paradas com 429, reotimização com cache = 1 pedido, validade do cache, destino fixo, inacessível e sem saída, assimetria) e `ruasOtimizacao.test.ts` (no app: ordem pelas ruas rotulada, nenhuma parada perdida, nenhum endereço/código nos corpos, reotimização = 1 matriz + 1 encaixe, estimativa usando o cache, parada inacessível mantida na posição anterior, chave inválida, sem conexão, cota, cancelamento, bloqueio sem servidor de teste, modo rápido sem internet). Scripts 68/68; privacidade OK; **JS inicial 147,9 KB gzip** (meta < 150).
+- **Emulador Android 14 (execução 45861376342, servidor ORS falso via `adb reverse`):** importação 11/11 · otimização 13/13 (os 7 anteriores + 6 pelas ruas) · RB-1 13/13 · logcat sem a chave de teste.
+  - 100 paradas pelas ruas com 429 no meio: 26,7 s do toque ao resultado (inclui a espera da sua posição pelo GPS do emulador); 3 pedidos de matriz + 1 recusado (429, respeitou o Retry-After), 1 de encaixe; só `distance`, `duration` e `m` como texto nos corpos.
+  - Reotimizar pendentes pelas ruas: 2,1 s, **1 pedido de matriz**.
+  - Chave recusada: mensagem clara, rota intacta; a rápida só rodou depois do toque.
+  - Sem conexão: mensagem clara, rota intacta.
+  - Cancelar durante encaixe/distâncias: ordem e fase iguais.
+  - **500 paradas pelas ruas: 69,8 s** do toque ao resultado — 72 pedidos de matriz, **36 no primeiro minuto e o restante só depois da janela de 60 s** (limite respeitado); algoritmo 2,8 s.
+- **Navegador (PWA):** otimização 8/8 (inclui "Pelas ruas indisponível no navegador, oferece a rápida"), RB-1 2/2.
+
+### 19.6 O que NÃO foi validado com o provedor real
+- Formato real das respostas do ORS (snap, matrix, directions), códigos de erro reais (401/403/429), cabeçalhos de limite e o `graph_date`.
+- Se o **Snap** existe na API pública (o README do GitHub diz que não; a página de planos diz que sim).
+- Latência, tamanho real das respostas, consumo de dados móveis e bateria.
+- Comportamento de um ponto sem rota num bloco de matriz (issue #1785).
+- CORS do ORS a partir da WebView do APK (`https://localhost`).
+- Qualidade das mãos únicas e conversões no mapa da sua região (OSM).
+- Comparação com o Spoke.
+
+### 19.7 Riscos e limitações
+- **Envio real bloqueado:** no APK teste.10, o modo "Pelas ruas reais" mostra "Envio real ainda não liberado" e oferece a rápida. Ele só calcula com um servidor de teste local (configuração de teste, não exposta na interface).
+- **Margem do JS inicial:** 147,9 KB de 150 KB. Os próximos módulos (RB-3/RB-4) precisam continuar sob demanda.
+- Cache de 500 paradas ≈ 3,3 MB por rota no IndexedDB (apagado com a rota).
+- Paradas em revisão ficam na posição relativa anterior; o **posicionamento manual** na sequência e a confirmação de raio maior (> 200 m) ainda não têm tela (RB-3/R-C).
+- O traçado pelas ruas (directions) está no cliente, mas não é desenhado no mapa (RB-4).
+- Rotas de 500 paradas levam pelo menos ~1 min pelo limite de 40 pedidos/min do plano gratuito.
 

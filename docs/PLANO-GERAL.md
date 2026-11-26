@@ -298,7 +298,7 @@ Cada fase termina com testes reais, relatório e **pedido de aprovação**. Fase
 | Fase | Situação | Entrega |
 |---|---|---|
 | R-A · Motor v3 | **validação física parcial aprovada (6 itens); 4 pendentes** | motor em Worker, origem na posição atual, cancelar, término livre/destino, só pendentes, linhas retas removidas do mapa |
-| R-B · OpenRouteService | **RB-0 aprovada; RB-1 (cofre + central) feita — ARQUITETURA §18; RB-2 aguarda aprovação** | matriz e traçado pelas ruas, cache, cota, erros, chave no Keystore |
+| R-B · OpenRouteService | **RB-0 e RB-1 aprovadas; RB-2 feita (cliente, cache, otimização pelas ruas com respostas controladas — ARQUITETURA §19); envio real bloqueado; RB-3 aguarda aprovação** | matriz e traçado pelas ruas, cache, cota, erros, chave no Keystore |
 | R-C · Visual V16 (variante B) | após a R-B; telas finais aprovadas antes | mapa principal, barra e cartão flutuantes |
 | R-D · Validação | contínua | atual × novo × Spoke, mesmas condições |
 
