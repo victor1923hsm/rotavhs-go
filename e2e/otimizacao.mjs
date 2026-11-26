@@ -73,6 +73,15 @@ async function abrir() {
         await device.shell(`input tap ${Math.round(caixa.x + (x * caixa.w) / iw)} ${Math.round(caixa.y + (y * caixa.h) / ih)}`)
       },
       mudarPosicao: async () => esperar(8000), // o geo fix roda a cada 2 s: algumas leituras no novo lugar
+      // Fecha o app de verdade (processo encerrado) e abre de novo: a rota tem de voltar do armazenamento.
+      async reabrir() {
+        await device.shell(`am force-stop ${PKG}`)
+        await esperar(1500)
+        await device.shell(`am start -W -n ${PKG}/.MainActivity`)
+        const wv = await device.webView({ pkg: PKG }, { timeout: 60_000 })
+        this.page = await wv.page()
+        await esperar(3000)
+      },
       fechar: async () => {
         clearInterval(relogioGps)
         await device.close()
@@ -97,6 +106,13 @@ async function abrir() {
       }
     },
     fechar: () => b.close(),
+    async reabrir() {
+      const url = this.page.url()
+      await this.page.close()
+      this.page = await ctx.newPage()
+      await this.page.goto(url)
+      await esperar(3000)
+    },
   }
 }
 
@@ -298,6 +314,27 @@ async function main() {
       }, 60_000, 150)
       if (!r) throw new Error('o recálculo não respondeu')
       return `${r} em ${((Date.now() - t0) / 1000).toFixed(1)} s (a ordem só muda com o toque)`
+    })
+  }
+  if (!filtro || 'reabrir'.includes(filtro)) {
+    await caso('Fechar e reabrir o app sem perder a rota (100 paradas, otimizada, em andamento)', async () => {
+      const { pts } = planilha(100)
+      posicao = { lat: pts[10].lat, lon: pts[10].lon + 0.0002 }
+      await ctx.mudarPosicao(posicao)
+      await importar(ctx, 100)
+      await otimizar(ctx)
+      await tocarLivre(ctx, 'Iniciar entregas')
+      await esperar(800)
+      const antes = await sequencia(ctx.page)
+      await ctx.reabrir()
+      await ir(ctx.page, '/rotas')
+      const ok = await aguardar(async () => (await sequencia(ctx.page)).length === 100, 20_000, 300)
+      if (!ok) throw new Error('a rota não voltou com 100 paradas')
+      const depois = await sequencia(ctx.page)
+      if (depois.join() !== antes.join()) throw new Error('a ordem mudou depois de reabrir')
+      const t = await texto(ctx.page)
+      if (!/EM ANDAMENTO|ANDAMENTO/i.test(t) && !t.includes('Recalcular pendentes')) throw new Error('a fase não voltou como "em andamento"')
+      return 'mesma ordem otimizada, mesma fase, 100 paradas'
     })
   }
   log('\nErros de JavaScript:', erros.length ? erros.join(' | ') : 'nenhum')

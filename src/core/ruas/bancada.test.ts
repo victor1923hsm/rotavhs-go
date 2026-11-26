@@ -31,7 +31,7 @@ describe.runIf(process.env.BANCADA)('bancada RB-0', () => {
       gc?.()
       const heap0 = process.memoryUsage().heapUsed
       const t0 = performance.now()
-      const res = otimizar({ visitas, matriz })
+      const res = otimizar({ visitas, matriz, termino: r.finalObrigatorio === undefined ? { tipo: 'livre' } : { tipo: 'visita', id: `v${r.finalObrigatorio}` } })
       const msMotor = performance.now() - t0
       const heap1 = process.memoryUsage().heapUsed
       const usados = res.ordem.map((id) => idx.indexOf(Number(id.slice(1))))
@@ -44,6 +44,7 @@ describe.runIf(process.env.BANCADA)('bancada RB-0', () => {
       linhas.push({
         paradas: n,
         noMotor: idx.length - 1,
+        finalSemSaida: r.finalObrigatorio !== undefined,
         pedidos: { ...r.relatorio.pedidos, rotaPrevista: prev.pedidosRota },
         esperaLimiteS: Math.round(t / 1000),
         kbRecebidos: Math.round(prov.contagem.bytes / 1024),

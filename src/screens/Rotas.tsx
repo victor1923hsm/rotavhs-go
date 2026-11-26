@@ -5,6 +5,7 @@ import { ehFicticia } from '@/app/prototipo'
 import { RefreshCw, Search, X } from 'lucide-react'
 import { parada, resumoDaOrdem, useEstado } from '@/app/estado'
 import { JanelaOtimizacao } from '@/components/domain/Otimizacao'
+import { AvisoRuas, SeletorModo, useDisparoOtimizacao } from '@/components/domain/ModoOtimizacao'
 import { temCoordenada } from '@/core/parada'
 import { duracao, numero } from '@/core/formato'
 import { ChipParada } from '@/components/domain/ChipParada'
@@ -20,6 +21,7 @@ const MapaRota = lazy(() => import('@/components/domain/MapaRota'))
 
 export function Rotas() {
   const e = useEstado()
+  const disparo = useDisparoOtimizacao()
   const ir = useIr()
   const lista = useRef<HTMLDivElement>(null)
   const mapaRef = useRef<HTMLDivElement>(null)
@@ -91,16 +93,20 @@ export function Rotas() {
       {e.fase === 'revisao' && (
         <div className="otimizar-cartao">
           {e.destacarOtimizar && <p className="rotulo" role="status" style={{ margin: '0 2px 8px', color: 'inherit', fontWeight: 600 }}>Rota importada e conferida. Próximo passo:</p>}
-          <button className={`botao destaque${e.destacarOtimizar ? ' pulsar' : ''}`} onClick={() => void e.otimizar()} disabled={!!e.otimizacao}>OTIMIZAR MINHA ROTA</button>
+          <button className={`botao destaque${e.destacarOtimizar ? ' pulsar' : ''}`} onClick={disparo.otimizar} disabled={!!e.otimizacao}>OTIMIZAR MINHA ROTA</button>
           <p className="rotulo" style={{ margin: '8px 2px 0', color: 'inherit' }}>
             Ponto de partida: <b>sua posição atual</b>
             {gpsPerto ? ' (GPS ativo)' : e.rota.fonte === 'exemplo' ? (loc.ativa && loc.leitura ? ' · você está longe da rota de exemplo: usa a posição de teste' : ' · o GPS liga ao otimizar') : ' · o GPS liga ao otimizar'}.
             A ordem da SPX fica só como referência.
           </p>
           <p className="rotulo" style={{ margin: '8px 2px 0', color: 'inherit' }}>
-            Objetivo: menor tempo. Distâncias <b>aproximadas, sem ruas</b> (linha reta × 1,35) até a fase R-B. Calcula em segundo plano; a ordem só muda com o seu toque.
+            Objetivo: menor tempo. Calcula em segundo plano; a ordem só muda com o seu toque.
           </p>
           {opcoesTermino}
+          <div style={{ marginTop: 10 }}>
+            <span className="rotulo" style={{ color: 'inherit' }}>Modo de otimização</span>
+            <SeletorModo comLink />
+          </div>
         </div>
       )}
       {e.fase !== 'revisao' && e.origemOtimizacao && (
@@ -173,8 +179,9 @@ export function Rotas() {
         {e.fase === 'andamento' && (
           <>
             {proxima && <button className="botao" onClick={() => abrir(proxima)}>Ver próximo pedido →</button>}
-            <button className="botao contorno" onClick={() => void e.recalcular()} disabled={!!e.otimizacao}><RefreshCw size={18} /> Recalcular pendentes</button>
+            <button className="botao contorno" onClick={disparo.recalcular} disabled={!!e.otimizacao}><RefreshCw size={18} /> Recalcular pendentes</button>
             {opcoesTermino}
+            <SeletorModo comLink />
             {confirmar ? (
               <div className="confirmar" role="alertdialog" aria-label="Finalizar a rota">
                 <strong>Finalizar a rota?</strong>
@@ -201,6 +208,7 @@ export function Rotas() {
       </div>
 
       <JanelaOtimizacao />
+      <AvisoRuas />
       <Planos />
       <Suspense fallback={null}><Laboratorio /></Suspense>
 

@@ -24,8 +24,13 @@ export interface ResultadoFluxo {
   acessos: AcessoViario[]
   /** Índices (na lista original) encaixados e pedidos ao provedor, com a origem em 0. */
   incluidos: number[]
-  /** Índices LOCAIS da montagem que vão para o motor (0 = origem + componente principal). */
+  /** Índices LOCAIS da montagem que vão para o motor (0 = origem + componente principal [+ final obrigatório]). */
   paraMotor: number[]
+  /**
+   * Término livre: uma parada aonde se chega mas de onde não se sai pelas ruas (ex.: rua sem saída em mão única)
+   * é válida como ÚLTIMA. Índice LOCAL dela (já incluído em paraMotor); o motor deve recebê-la como término fixo.
+   */
+  finalObrigatorio?: number
   montagem: MontagemMatriz | null
   relatorio: RelatorioRoteirizacao
   /** Parou antes do fim (cota, chave, indisponível). A rota atual não muda; o que já veio fica guardado. */
@@ -55,7 +60,9 @@ export async function roteirizar(
   amb: AmbienteFluxo,
   sinal?: AbortSignal,
   acessosAnteriores?: AcessoViario[],
+  opcoes: { terminoLivre?: boolean } = {},
 ): Promise<ResultadoFluxo> {
+  const terminoLivre = opcoes.terminoLivre ?? true
   const rel = relatorioVazio(provedor.id, pontos.length - 1)
   const acessos = acessosAnteriores ?? pontos.map(novoAcesso)
   const janelaEnc = new JanelaDeslizante(Math.max(1, Math.floor(Math.min(provedor.limites.porMinuto.encaixe, 1e6) * 0.9)))
@@ -116,14 +123,19 @@ export async function roteirizar(
   mont.dispensarVoltaAoInicio()
   // Só entram no motor as paradas com percurso de ida e volta entre si (e alcançáveis a partir de você).
   const { dentro, fora } = mont.componentePrincipal()
-  for (const k of fora) marcarSemPercurso(acessos[incluidos[k]!]!)
-  return fim(mont, undefined, [0, ...dentro])
+  // Só chegada: alcançável a partir do componente principal, mas sem volta. Com término livre, UMA delas pode ser
+  // a última parada. Com mais de uma (ou com destino fixo), todas vão para revisão: você decide (nunca automático).
+  const soChegada = fora.filter((k) => dentro.some((i) => mont.alcanca(i, k)) || mont.alcanca(0, k))
+  let finalObrigatorio: number | undefined
+  if (terminoLivre && soChegada.length === 1) finalObrigatorio = soChegada[0]
+  for (const k of fora) if (k !== finalObrigatorio) marcarSemPercurso(acessos[incluidos[k]!]!)
+  return fim(mont, undefined, finalObrigatorio === undefined ? [0, ...dentro] : [0, ...dentro, finalObrigatorio], finalObrigatorio)
 
-  function fim(m: MontagemMatriz | null, interrompido?: FalhaProvedor, paraMotor: number[] = []): ResultadoFluxo {
+  function fim(m: MontagemMatriz | null, interrompido?: FalhaProvedor, paraMotor: number[] = [], finalObrigatorio?: number): ResultadoFluxo {
     rel.memoria.matrizBytes = m?.bytes ?? 0
     rel.problemas.confirmar = acessos.filter((a) => a.situacao === 'confirmar').length
     rel.problemas.revisar = acessos.filter((a) => a.situacao === 'revisar').length
     rel.problemas.paresSemPercurso = m ? m.semPercurso().length : 0
-    return { acessos, incluidos: m ? incluidos : [], paraMotor, montagem: m, relatorio: rel, interrompido }
+    return { acessos, incluidos: m ? incluidos : [], paraMotor, finalObrigatorio, montagem: m, relatorio: rel, interrompido }
   }
 }

@@ -2,8 +2,8 @@
 import { describe, expect, it } from 'vitest'
 import { otimizar } from '../otimizacao/motor'
 import { planejarFaltantes, planejarMatriz, planejarRota } from './blocos'
-import { chavePar } from './cache'
-import { aplicarEncaixe, confirmarRaioMaior, novoAcesso, planejarEncaixe, pontoDeCalculo, recusarRaioMaior } from './encaixe'
+import { chavePar, entradaValida, VALIDADE_CACHE_MS } from './cache'
+import { aplicarEncaixe, confirmarRaioMaior, destinoNavegacao, novoAcesso, planejarEncaixe, pontoDeCalculo, recusarRaioMaior } from './encaixe'
 import { roteirizar, type AmbienteFluxo } from './fluxo'
 import { esperaNovaTentativa, JanelaDeslizante } from './limitador'
 import { CUSTO_PROIBIDO_MIN, MontagemMatriz, trechosSemPercurso } from './montagem'
@@ -12,7 +12,7 @@ import { LIMITES_ORS, PROVEDOR_ESTIMADO } from './provedores'
 import { preverConsumo } from './relatorio'
 import { MalhaViaria } from './testes/malhaViaria'
 import { ProvedorSintetico } from './testes/provedorSintetico'
-import { FalhaProvedor, type Coordenada } from './tipos'
+import { FalhaProvedor, type BlocoMatriz, type Coordenada, type RoutingProvider } from './tipos'
 
 /** Relógio simulado: esperar avança o tempo sem dormir de verdade. */
 function ambienteSimulado(): AmbienteFluxo & { esperas: number[] } {
@@ -291,5 +291,81 @@ describe('fluxo completo com o provedor sintético', () => {
   it('provedor estimado não tem traçado (nada de linha reta desenhada como percurso)', async () => {
     expect(PROVEDOR_ESTIMADO.pelasRuas).toBe(false)
     await expect(PROVEDOR_ESTIMADO.rota([{ lat: 0, lon: 0 }, { lat: 0, lon: 0.01 }], 'carro')).rejects.toBeInstanceOf(FalhaProvedor)
+  })
+})
+
+/** Provedor de teste com matriz fixa (segundos; null = sem percurso). Pontos já "na via". */
+function provedorFixo(seg: (number | null)[][]): RoutingProvider {
+  return {
+    id: 'sintetico', limites: LIMITES_ORS, perfis: ['carro'], pelasRuas: true,
+    encaixar: async (p) => p.map((c) => ({ acesso: c, distanciaM: 0 })),
+    matriz: async (_p, origens, destinos): Promise<BlocoMatriz> => ({
+      origens, destinos,
+      segundos: origens.map((i) => destinos.map((j) => (i === j ? 0 : seg[i]![j]!))),
+      metros: origens.map((i) => destinos.map((j) => (i === j ? 0 : seg[i]![j] === null ? null : seg[i]![j]! * 10))),
+    }),
+    rota: async () => [],
+  }
+}
+const pts = (n: number) => Array.from({ length: n }, (_, i) => ({ lat: -15.9 + i * 0.001, lon: -48.3 }))
+const S = 60
+
+describe('auditoria da RB-0 (pedida na aprovação da RB-1)', () => {
+  // 0 = origem; 1 ↔ 2; 3 só recebe (de 2); 4 só recebe (de 1)
+  const comDuas: (number | null)[][] = [
+    [0, S, S, null, null],
+    [null, 0, S, null, S],
+    [null, S, 0, S, null],
+    [null, null, null, 0, null],
+    [null, null, null, null, 0],
+  ]
+  const comUma: (number | null)[][] = comDuas.map((l, i) => l.slice(0, 4).map((v, j) => (i === 4 || j === 4 ? null : v))).slice(0, 4)
+
+  it('parada sem saída é válida como ÚLTIMA quando o término é livre', async () => {
+    const r = await roteirizar(provedorFixo(comUma), pts(4), 'carro', ambienteSimulado())
+    expect(r.finalObrigatorio).toBe(3)
+    expect(r.paraMotor).toEqual([0, 1, 2, 3])
+    expect(r.acessos[3]!.situacao).toBe('encaixado')
+    const { matriz, proibidos } = r.montagem!.paraMotor(r.paraMotor)
+    const visitas = r.paraMotor.slice(1).map((i) => ({ id: `v${i}` }))
+    const res = otimizar({ visitas, matriz, termino: { tipo: 'visita', id: `v${r.finalObrigatorio}` }, iteracoes: 20 })
+    expect(res.ordem[res.ordem.length - 1]).toBe('v3')
+    expect(trechosSemPercurso([0, ...res.ordem.map((id) => Number(id.slice(1)))], proibidos)).toEqual([])
+  })
+
+  it('com destino fixo, a parada sem saída vai para revisão (não para o fim)', async () => {
+    const r = await roteirizar(provedorFixo(comUma), pts(4), 'carro', ambienteSimulado(), undefined, undefined, { terminoLivre: false })
+    expect(r.finalObrigatorio).toBeUndefined()
+    expect(r.acessos[3]!.situacao).toBe('revisar')
+  })
+
+  it('duas paradas sem saída: as duas para revisão, nenhuma escolhida sozinha, nenhuma some', async () => {
+    const r = await roteirizar(provedorFixo(comDuas), pts(5), 'carro', ambienteSimulado())
+    expect(r.finalObrigatorio).toBeUndefined()
+    expect(r.acessos[3]!.situacao).toBe('revisar')
+    expect(r.acessos[4]!.situacao).toBe('revisar')
+    const noMotor = new Set(r.paraMotor.slice(1).map((k) => r.incluidos[k]!))
+    for (let i = 1; i < 5; i++) expect(noMotor.has(i) || ['revisar', 'confirmar'].includes(r.acessos[i]!.situacao)).toBe(true)
+    expect(r.acessos.length).toBe(5)
+  })
+
+  it('Navegar continua indo para a coordenada original, a não ser que você escolha o acesso viário', () => {
+    const a = novoAcesso({ lat: -15.9, lon: -48.3 })
+    aplicarEncaixe([a], [0], 25, [{ acesso: { lat: -15.9002, lon: -48.3 }, distanciaM: 22 }])
+    expect(destinoNavegacao(a)).toEqual({ lat: -15.9, lon: -48.3 })
+    a.navegarPara = 'acesso'
+    expect(destinoNavegacao(a)).toEqual({ lat: -15.9002, lon: -48.3 })
+    expect(a.original).toEqual({ lat: -15.9, lon: -48.3 })
+  })
+
+  it('cache respeita provedor, perfil, versão dos dados e validade (o sentido já está na chave)', () => {
+    const e = { valor: 1, provedor: 'ors' as const, perfil: 'carro' as const, versaoDados: 'v1', criadoEm: 1000 }
+    const base = { provedor: 'ors' as const, perfil: 'carro' as const, versaoDados: 'v1', agora: 2000 }
+    expect(entradaValida(e, base)).toBe(true)
+    expect(entradaValida(e, { ...base, provedor: 'valhalla' })).toBe(false)
+    expect(entradaValida(e, { ...base, perfil: 'moto' })).toBe(false)
+    expect(entradaValida(e, { ...base, versaoDados: 'v2' })).toBe(false)
+    expect(entradaValida(e, { ...base, agora: 1000 + VALIDADE_CACHE_MS + 1 })).toBe(false)
+    expect(entradaValida(undefined, base)).toBe(false)
   })
 })

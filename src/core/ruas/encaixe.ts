@@ -26,6 +26,11 @@ export interface AcessoViario {
   /** Raio maior autorizado por você (só depois de 'confirmar'). */
   raioConfirmadoM?: number
   motivoRevisao?: 'sem-via' | 'sem-percurso'
+  /**
+   * Para onde o Navegar leva (futuro, por parada): 'original' (padrão, a coordenada da planilha) ou 'acesso'
+   * (o ponto na via, útil quando a entrega fica longe da rua). A escolha nunca altera a coordenada original.
+   */
+  navegarPara?: 'original' | 'acesso'
 }
 
 export function novoAcesso(original: Coordenada): AcessoViario {
@@ -95,4 +100,9 @@ export function marcarSemPercurso(a: AcessoViario) {
 /** Ponto que vai para o cálculo pelas ruas (acesso viário), ou null se não entra (confirmar/revisar). */
 export function pontoDeCalculo(a: AcessoViario): Coordenada | null {
   return a.situacao === 'encaixado' && a.acesso ? a.acesso : null
+}
+
+/** Destino do Navegar para esta parada. Sem acesso viário, sempre a coordenada original. */
+export function destinoNavegacao(a: AcessoViario): Coordenada {
+  return a.navegarPara === 'acesso' && a.situacao === 'encaixado' && a.acesso ? a.acesso : a.original
 }

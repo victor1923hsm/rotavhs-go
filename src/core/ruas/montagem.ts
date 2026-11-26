@@ -73,6 +73,12 @@ export class MontagemMatriz {
     }
   }
 
+  /** Há percurso de i para j (recebido do provedor, não estimado nem dispensado)? */
+  alcanca(i: number, j: number) {
+    const k = i * this.n + j
+    return i !== j && Number.isFinite(this.min[k]!) && this.estimado[k] !== 2
+  }
+
   conhecido(i: number, j: number) {
     return !Number.isNaN(this.min[i * this.n + j]!)
   }

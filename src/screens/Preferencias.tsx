@@ -93,6 +93,12 @@ export function Preferencias() {
       </div>
 
       <div className="secao">
+        <div className="t">Cálculo de rotas</div>
+        <p className="rotulo">Modo de otimização, provedor e chave da API (cofre seguro do Android). O cálculo pelas ruas está em desenvolvimento.</p>
+        <LinkFluido to="/estatisticas/ruas" className="gps-acao">Calcular pelas ruas →</LinkFluido>
+      </div>
+
+      <div className="secao">
         <div className="t">Dados guardados neste aparelho</div>
         <p className="rotulo">Ficam só neste navegador. Ao finalizar uma rota, endereços, códigos SPX, coordenadas, histórico, planos e a matriz de distâncias são apagados; fica só o resumo. Nenhuma rota em uso é apagada sem o seu toque.</p>
         <div className="cartao dados-cartao">

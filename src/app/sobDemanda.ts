@@ -10,6 +10,7 @@ const carregar = {
   rotasFinalizadas: () => import('@/screens/RotasFinalizadas'),
   preferencias: () => import('@/screens/Preferencias'),
   financeiro: () => import('@/screens/Financeiro'),
+  calcularRuas: () => import('@/screens/CalcularRuas'),
   laboratorio: () => import('@/components/domain/Laboratorio'),
 }
 
@@ -18,6 +19,7 @@ export const Custo = lazy(() => carregar.custo().then((m) => ({ default: m.Custo
 export const RotasFinalizadas = lazy(() => carregar.rotasFinalizadas().then((m) => ({ default: m.RotasFinalizadas })))
 export const Preferencias = lazy(() => carregar.preferencias().then((m) => ({ default: m.Preferencias })))
 export const Financeiro = lazy(() => carregar.financeiro().then((m) => ({ default: m.Financeiro })))
+export const CalcularRuas = lazy(() => carregar.calcularRuas().then((m) => ({ default: m.CalcularRuas })))
 export const Laboratorio = lazy(() => carregar.laboratorio().then((m) => ({ default: m.Laboratorio })))
 
 let feito = false

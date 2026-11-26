@@ -327,4 +327,25 @@ Distância indisponível **nunca** é trocada em silêncio por linha reta.
 
 **Execução:** RB-0 (preparação da arquitetura, auditoria das dependências e testes) autorizada. **A RB-1 só com nova autorização**, depois da apresentação dos resultados da RB-0.
 
-**RB-0 concluída em 2026-11-26** (ARQUITETURA §17). **Pendente da sua decisão para a RB-1:** cofre da chave — opção C (plugin próprio mínimo, recomendada), `@aparajita/capacitor-secure-storage` com `@capacitor/android` fixado em 8.6.2, ou outra.
+**RB-0 concluída em 2026-11-26** (ARQUITETURA §17) e **aprovada em 2026-11-26 10:22**; cofre escolhido: **opção C**.
+
+## RB-1 · Autorizada em 2026-11-26 10:22 (cofre opção C + central de otimização)
+| Item | Decisão do usuário |
+|---|---|
+| Cofre | **Opção C:** plugin nativo próprio e mínimo, **Android Keystore + AES-256-GCM**, sem criptografia própria; só guardar, ler, verificar existência e excluir; a chave nunca em logs, relatórios, diagnósticos ou mensagens de erro; nunca em localStorage, IndexedDB ou arquivos desprotegidos; **backup não exporta**; tratar invalidação da chave e reinstalação; substituir e excluir; o PWA continua funcionando sem cofre |
+| Central | Tela "Calcular pelas ruas": otimização rápida (motor atual) e pelas ruas reais, disponibilidade do provedor, chave em campo protegido com substituição, modo selecionado claro, estados de carregamento, erro, indisponibilidade e cancelamento, **aviso de que a integração real está em desenvolvimento**. Nada simulado como rota real |
+| Preservação | Importação SPX, agrupamento por endereço, GPS contínuo, origem na posição atual, reotimização só das pendentes, cancelar sem mudar a rota, persistência da rota ativa, as três opções de término e todas as correções até o teste.8 |
+| Uso comercial | Arquitetura independente do ORS; **não assumir** que o plano gratuito permite uso nas entregas; **consulta à HeiGIT: PENDENTE** até resposta formal; caminho aberto para servidor próprio (Valhalla/OSRM) sem API comercial obrigatória |
+| Limites | Só v2-dev; main, PWA publicado e RotaVHS original intocados; **nenhuma chamada a provedor real**; não substituir o motor atual; **não iniciar a RB-2 sem aprovação** |
+| Entrega | Todos os testes, emulador, teste do cofre (inclusive excluir e substituir), capturas, documentos, APK **teste.9** assinado se tudo passar |
+
+**Consulta à HeiGIT (uso comercial individual): PENDENTE.** Rascunho em ARQUITETURA §17.8; você envia. Até a resposta formal, o ORS é só para desenvolvimento e testes.
+
+## P-COORD · Coordenadas dos destinatários como dado pessoal — **PROPOSTA, aguardando sua confirmação antes da integração real (RB-2)**
+Coordenadas de entrega podem identificar uma pessoa mesmo sem nome e endereço (LGPD: dado pessoal quando permitem identificar). Proposta de tratamento:
+1. **Envio:** só com a sua autorização expressa no app (G4), revogável; só coordenadas (6 casas) e parâmetros técnicos, conferidos pela guarda de carga (`privacidade.ts`). A sua posição também é coordenada pessoal (sua).
+2. **Minimização:** o provedor recebe as coordenadas de acesso viário (o ponto na rua), não ids, ordem da SPX nem número da parada; os pedidos de matriz não dizem qual ponto é "entrega".
+3. **Retenção no aparelho:** matriz, encaixes e traçado ficam só enquanto a rota existir e são apagados ao finalizar, encerrar ou substituir a rota (mesma regra da Etapa 3); validade máxima do cache de 7 dias.
+4. **Retenção no provedor:** fora do nosso controle; registrar a política do ORS (ou do servidor próprio) antes de ligar; servidor próprio permite "sem registro de pedidos".
+5. **Logs:** nenhum log com coordenadas, chave ou respostas; relatórios só com contagens e tempos.
+

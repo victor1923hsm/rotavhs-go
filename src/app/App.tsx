@@ -12,7 +12,7 @@ import { Rotas } from '@/screens/Rotas'
 import { Estatisticas } from '@/screens/Estatisticas'
 import { AvisoConferencia, GravacaoFalhou, RetomarRota } from '@/components/domain/Retomada'
 
-import { Custo, Financeiro, Importar, Preferencias, RotasFinalizadas, preCarregarTelas } from '@/app/sobDemanda'
+import { CalcularRuas, Custo, Financeiro, Importar, Preferencias, RotasFinalizadas, preCarregarTelas } from '@/app/sobDemanda'
 
 /** Enquanto o bloco da tela chega (raro: eles são pré-carregados). */
 const Sob = ({ children }: { children: ReactNode }) => (
@@ -75,6 +75,7 @@ export function App() {
             <Route path="/estatisticas/custo" element={<Sob><Custo /></Sob>} />
             <Route path="/estatisticas/rotas" element={<Sob><RotasFinalizadas /></Sob>} />
             <Route path="/estatisticas/preferencias" element={<Sob><Preferencias /></Sob>} />
+            <Route path="/estatisticas/ruas" element={<Sob><CalcularRuas /></Sob>} />
             <Route path="/financeiro" element={<Sob><Financeiro /></Sob>} />
             <Route path="*" element={<Navigate to="/pedidos" replace />} />
           </Routes>
