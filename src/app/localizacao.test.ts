@@ -186,3 +186,17 @@ describe('privacidade da localização (P2)', () => {
     for (const f of ['src/app/persistencia.ts', 'src/app/estado.ts', 'src/platform/armazenamento/dexie.ts']) expect(ler(f), f).not.toMatch(/localizacao|geolocation/i)
   })
 })
+
+describe('chip do GPS (correção 2.0.0-teste.8)', () => {
+  it('as classes de estado do chip não coincidem com classes de tela inteira do app', () => {
+    // Antes: o estado "Buscando sinal" usava a classe "busca", a mesma da tela de busca (absolute, inset: 0),
+    // e o chip cobria a tela toda, bloqueando os toques (inclusive o OTIMIZAR MINHA ROTA).
+    const css = ler('src/styles/app.css')
+    const globais = new Set([...css.matchAll(/^\.([a-z][\w-]*)\s*[,{]/gm)].map((m) => m[1]))
+    const tons = new Set<string>()
+    const base = { ativa: true, estado: 'ok' as const, leitura: { lat: 0, lon: 0, precisaoM: 5, rumo: null, em: 0 } }
+    for (const s of [base, { ...base, estado: 'pedindo' as const }, { ...base, leitura: { ...base.leitura, precisaoM: 300 } }, { ...base, estado: 'indisponivel' as const }, { ...base, ativa: false }, { ...base, estado: 'negada' as const }])
+      tons.add(rotuloGps(s).tom)
+    for (const t of tons) expect(globais.has(t), `classe ".${t}" já existe no app.css`).toBe(false)
+  })
+})

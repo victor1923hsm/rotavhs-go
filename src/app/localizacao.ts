@@ -210,12 +210,12 @@ export function origemConfiavel(agora = Date.now()): (Ponto & { precisaoM: numbe
 }
 
 /** Os cinco estados que você vê: ativo, buscando sinal, impreciso, indisponível, desativado. */
-export function rotuloGps(s: Pick<Localizacao, 'ativa' | 'estado' | 'leitura'> & Partial<Pick<Localizacao, 'imprecisaDesde' | 'precisaoRecebidaM'>>): { rotulo: string; tom: 'ok' | 'busca' | 'aviso' | 'erro' | 'off' } {
+export function rotuloGps(s: Pick<Localizacao, 'ativa' | 'estado' | 'leitura'> & Partial<Pick<Localizacao, 'imprecisaDesde' | 'precisaoRecebidaM'>>): { rotulo: string; tom: 'ok' | 'buscando' | 'aviso' | 'erro' | 'off' } {
   if (s.estado === 'negada') return { rotulo: 'Desativado · permissão negada', tom: 'erro' }
   if (s.estado === 'sem-suporte') return { rotulo: 'Desativado · sem suporte', tom: 'erro' }
   if (!s.ativa) return { rotulo: 'Desativado', tom: 'off' }
   if (s.estado === 'indisponivel') return { rotulo: 'Indisponível', tom: 'erro' }
-  if (s.estado === 'pedindo' || s.estado === 'sem-sinal' || !s.leitura) return { rotulo: 'Buscando sinal', tom: 'busca' }
+  if (s.estado === 'pedindo' || s.estado === 'sem-sinal' || !s.leitura) return { rotulo: 'Buscando sinal', tom: 'buscando' }
   if (s.imprecisaDesde != null) return { rotulo: `Impreciso · ±${Math.round(s.precisaoRecebidaM ?? 0)} m (mostrando a última posição boa)`, tom: 'aviso' }
   if (imprecisa(s.leitura)) return { rotulo: `Impreciso · ±${Math.round(s.leitura.precisaoM)} m`, tom: 'aviso' }
   return { rotulo: `Ativo · ±${Math.round(s.leitura.precisaoM)} m`, tom: 'ok' }

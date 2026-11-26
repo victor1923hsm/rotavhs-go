@@ -1056,7 +1056,7 @@ html[data-direcao='aba-esquerda']::view-transition-old(tela) { animation-name: v
 .gps-chip.ok i {
   background: var(--minha-posicao);
 }
-.gps-chip.busca i {
+.gps-chip.buscando i {
   background: var(--minha-posicao);
   opacity: 0.45;
 }

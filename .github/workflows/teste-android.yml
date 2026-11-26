@@ -78,5 +78,7 @@ jobs:
           arch: x86_64
           profile: pixel_6
           disable-animations: true
+          ram-size: 4096M
+          heap-size: 512M
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           script: adb install -r app/android/app/build/outputs/apk/debug/app-debug.apk && adb logcat -c && FILTRO="${{ inputs.filtro }}" REPETIR="${{ inputs.repetir || '1' }}" node teste/e2e/importacao.mjs android; r=$?; echo "== otimização (R-A)"; FILTRO="${{ inputs.filtro_otimizacao }}" node teste/e2e/otimizacao.mjs android; r2=$?; [ $r -eq 0 ] && r=$r2; echo "== memória do aparelho"; adb shell cat /proc/meminfo | head -3; echo "== logcat (WebView, falhas, memória)"; adb logcat -d | grep -iE "FATAL|crash|renderer|lowmemorykiller|am_kill|Out of memory|chromium.*(error|fatal)|tombstone" | tail -40; exit $r
