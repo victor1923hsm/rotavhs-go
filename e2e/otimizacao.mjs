@@ -50,7 +50,7 @@ async function abrir() {
     const page = await webview.page()
     let caixa = null
     const medir = async () => {
-      for (let t = 1; t <= 20 && !caixa; t++) {
+      for (let t = 1; t <= 10 && !caixa; t++) {
         await device.shell('rm -f /sdcard/ui.xml; uiautomator dump /sdcard/ui.xml').catch(() => {})
         const xml = String(await device.shell('cat /sdcard/ui.xml').catch(() => ''))
         const m = xml.match(/class="android\.webkit\.WebView"[^>]*bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"/)
@@ -58,12 +58,9 @@ async function abrir() {
         else await esperar(1500)
       }
       if (!caixa) {
-        // uiautomator às vezes não responde no emulador: no perfil pixel_6 (1080×2400) a WebView fica sempre aqui.
-        const tam = String(await device.shell('wm size')).match(/(\d+)x(\d+)/)
-        if (tam && tam[1] === '1080' && tam[2] === '2400') {
-          caixa = { x: 0, y: 128, w: 1080, h: 2209 }
-          log('  (posição da WebView: medida padrão do perfil pixel_6)')
-        } else throw new Error('não consegui medir a posição da WebView na tela (uiautomator)')
+        // uiautomator às vezes não responde no emulador: os toques passam a ser feitos pela própria WebView (CDP).
+        caixa = 'cdp'
+        log('  (uiautomator não respondeu: toques pela entrada de toque da WebView)')
       }
     }
     log('Android:', device.model())
@@ -71,6 +68,7 @@ async function abrir() {
       page,
       async tocar(x, y) {
         if (!caixa) await medir()
+        if (caixa === 'cdp') return page.touchscreen.tap(x, y)
         const { iw, ih } = await page.evaluate(() => ({ iw: innerWidth, ih: innerHeight }))
         await device.shell(`input tap ${Math.round(caixa.x + (x * caixa.w) / iw)} ${Math.round(caixa.y + (y * caixa.h) / ih)}`)
       },
