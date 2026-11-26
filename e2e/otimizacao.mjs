@@ -190,6 +190,7 @@ async function otimizar(ctx) {
   let ultimo = ''
   const fim = await aguardar(async () => {
     const perm = await botao(ctx.page, 'Permitir localização')
+    if (perm && !perm.livre) throw new Error('"Permitir localização" está coberto por outro elemento (o toque cairia nele)')
     if (perm) {
       log('  (tocou em "Permitir localização")')
       await ctx.tocar(perm.x, perm.y)

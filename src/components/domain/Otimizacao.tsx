@@ -3,6 +3,7 @@
 import { createPortal } from 'react-dom'
 import { Loader2 } from 'lucide-react'
 import { useEstado } from '@/app/estado'
+import { useLocalizacao } from '@/app/localizacao'
 
 export function JanelaOtimizacao() {
   const otimizacao = useEstado((e) => e.otimizacao)
@@ -12,7 +13,9 @@ export function JanelaOtimizacao() {
   const otimizar = useEstado((e) => e.otimizar)
   const recalcular = useEstado((e) => e.recalcular)
   const fase = useEstado((e) => e.fase)
-  if (!otimizacao && !falha) return null
+  // Enquanto a explicação da localização está na tela, ela fica sozinha (nada por cima dos botões dela).
+  const explicando = useLocalizacao((l) => l.explicando)
+  if ((!otimizacao && !falha) || (otimizacao && explicando)) return null
   const pct = Math.round((otimizacao?.progresso ?? 0) * 100)
   return createPortal(
     <div className="janela-fundo">
