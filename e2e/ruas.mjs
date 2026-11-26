@@ -119,12 +119,17 @@ async function digitarChave(ctx, valor) {
 }
 async function captura(ctx, nome) {
   await esperar(600)
-  const shot = await ctx.page.screenshot({ type: 'jpeg', quality: 70, scale: 'css' }).catch(() => null)
+  const shot = await ctx.page.screenshot({ type: 'jpeg', quality: 60, scale: 'css' }).catch(() => null)
   if (!shot) return
   mkdirSync('e2e-saida', { recursive: true })
   writeFileSync(`e2e-saida/${alvo}-${nome}.jpg`, shot)
-  // No emulador a captura também vai para o log (base64), para ser conferida sem baixar o artefato.
-  log(alvo === 'android' ? `TELA ${nome} ${shot.toString('base64')}` : `TELA ${nome} (e2e-saida/${alvo}-${nome}.jpg)`)
+  log(`TELA ${nome} (e2e-saida/${alvo}-${nome}.jpg)`)
+  if (alvo === 'android') {
+    // Também no log, em pedaços curtos (linhas longas demais somem do log do GitHub Actions).
+    const b64 = shot.toString('base64')
+    const n = Math.ceil(b64.length / 3000)
+    for (let i = 0; i < n; i++) log(`CAP ${nome} ${i + 1}/${n} ${b64.slice(i * 3000, (i + 1) * 3000)}`)
+  }
 }
 const nativo = (ctx, metodo, opcoes = {}) => ctx.page.evaluate(({ metodo, opcoes }) => window.Capacitor.nativePromise('CofreChave', metodo, opcoes), { metodo, opcoes })
 const sh = async (c) => String(await device.shell(c).catch((e) => `ERRO ${e.message}`))
