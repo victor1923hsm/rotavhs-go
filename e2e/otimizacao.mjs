@@ -63,8 +63,9 @@ async function abrir() {
         log('  (uiautomator não respondeu: toques pela entrada de toque da WebView)')
       }
     }
-    log('Android:', device.model())
+    log('Android:', device.model(), '· processo do app:', String(await device.shell(`pidof ${PKG}`)).trim())
     return {
+      pid: async () => String(await device.shell(`pidof ${PKG}`)).trim(),
       page,
       async tocar(x, y) {
         if (!caixa) await medir()
@@ -254,6 +255,7 @@ async function main() {
       r.ok = true
     } catch (e) {
       r.erro = e.message
+      if (ctx.pid) r.erro += ` · processo agora: ${await ctx.pid().catch(() => '?')}`
       const shot = await ctx.page.screenshot({ type: 'jpeg', quality: 35, scale: 'css' }).catch(() => null)
       if (shot) log(`CAPTURA ${nome.replace(/\s+/g, '-')} ${shot.toString('base64')}`)
     }
