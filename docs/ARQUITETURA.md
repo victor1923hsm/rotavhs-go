@@ -841,7 +841,7 @@ Sem linhas retas em nenhum caso (R4). O motor v3 da R-A **não muda**: ele já a
 - turnos/restrições conforme o mapeamento do OSM;
 - tempo de 1,5–2 min na 1ª matriz de 500 paradas.
 
-## 17. R-B aprovada (2026-11-26 08:58) e resultado da RB-0 — **RB-0 concluída; RB-1 aguarda autorização**
+## 17. R-B aprovada (2026-11-26 08:58) e resultado da RB-0 — **RB-0 concluída e aprovada (2026-11-26 10:22)**
 As decisões estão em `DECISOES.md` (RB1–RB5 e os 15 requisitos). Esta seção registra como elas viram arquitetura e o que a RB-0 entregou. **Nada da RB-0 está ligado ao app**: o teste.8 continua igual; nenhum pedido de rede foi feito a provedor de rotas.
 
 ### 17.1 Ajustes em relação ao plano da §16
@@ -973,4 +973,49 @@ Xeon 2,3 GHz, 2 núcleos, Node. Malha fictícia 70 × 70 quarteirões com mão �
 6. Guarda de privacidade: só coordenadas saem; texto é recusado.
 7. Suíte completa e o teste do emulador (funcionalidades do teste.8) passando na v2-dev; main sem alteração.
 8. Escolha do cofre (C, `@aparajita` fixado, ou outra) — **decisão sua para a RB-1**.
+
+## 18. RB-1 — cofre da chave e central "Calcular pelas ruas" (autorizada em 2026-11-26 10:22)
+Nada de rede: **nenhuma chamada a provedor de rotas**. O motor atual continua sendo o único que calcula.
+
+### 18.1 Cofre (opção C: plugin nativo próprio)
+`android/app/src/main/java/io/github/victor1923hsm/rotavhsgo/cofre/CofreChavePlugin.java`, registrado em `MainActivity` antes da ponte iniciar.
+| Requisito | Como foi atendido |
+|---|---|
+| Keystore + AES-256-GCM | chave AES de 256 bits **gerada dentro** do Android Keystore (não exportável; StrongBox quando o aparelho tem), `AES/GCM/NoPadding`, IV aleatório do próprio Keystore (`setRandomizedEncryptionRequired`), marca de 128 bits, AAD fixo `rotavhsgo:chave-rotas:v1`. Nenhum algoritmo próprio |
+| Só 4 operações | `guardar`, `ler`, `existe` (também confere que decifra, sem devolver o valor), `apagar` |
+| Sem logs | o plugin não tem nenhuma chamada de log; erros são códigos fixos (`COFRE_FALHA`, `COFRE_VALOR_INVALIDO`) sem texto da exceção. **Achado da auditoria:** com o log da ponte Capacitor ligado (padrão no APK debug), a ponte grava no logcat os parâmetros e resultados de cada chamada de plugin — a chave apareceria ali. Corrigido com `loggingBehavior: 'none'` em `capacitor.config.ts` (vale para o app todo) |
+| Onde fica | só o texto cifrado (IV:cifra em base64) em SharedPreferences privadas (`rotavhsgo_cofre`). Nunca em localStorage, IndexedDB, sessionStorage, cookies ou arquivos de configuração. A tela não mostra o valor; o campo é de senha e é limpo ao guardar ou cancelar; o estado da tela não guarda o valor |
+| Backup | `allowBackup=false`, `fullBackupContent=false` e `dataExtractionRules` excluindo tudo (já existia desde a Etapa A1) |
+| Invalidação / reinstalação | chave do Keystore invalidada ou ausente, ou texto cifrado adulterado → tudo é apagado e o estado volta `invalidada` (a tela pede para cadastrar de novo). Reinstalar apaga as duas partes |
+| Substituir / excluir | substituir = apaga a chave antiga do Keystore e gera outra; excluir apaga a cifra e a chave do Keystore (com confirmação na tela) |
+| Gerenciador de senhas | o preenchimento automático do Android foi desligado na WebView (o app não tem login), para nenhum gerenciador oferecer guardar a chave |
+| PWA | `src/platform/cofre.ts`: no navegador o cofre é **indisponível** (nada é guardado); o app continua com a otimização rápida. A ponte do Capacitor só é carregada no APK |
+
+### 18.2 Central de otimização
+- `src/screens/CalcularRuas.tsx` (Estatísticas → Configurações → **Calcular pelas ruas**) e o seletor de modo na tela Rotas (`src/components/domain/ModoOtimizacao.tsx`), com o estado em `src/app/ruas.ts`.
+- **Rápida** = motor atual (distâncias aproximadas, sem ruas, funciona sem internet). **Pelas ruas reais** = em desenvolvimento: tocar em OTIMIZAR (ou Recalcular) abre o aviso "Cálculo pelas ruas em desenvolvimento" com **Usar a otimização rápida** ou **Cancelar** (nada muda). Nenhum resultado simulado.
+- Disponibilidade do provedor: verificando · indisponível no navegador · sem chave · chave cadastrada (em desenvolvimento) · sem conexão · chave invalidada · erro do cofre. `pronto` é sempre falso nesta versão.
+- Mostra o provedor previsto (ORS, só testes, consulta à HeiGIT pendente) e que um servidor próprio (Valhalla/OSRM) pode substituí-lo.
+- Seguiu os componentes já aprovados (cartões, fichas, botões ≥ 60 px, tokens de cor); não há quadro específico no Figma para esta tela — **pendência visual** para revisão na R-C.
+
+### 18.3 Auditoria da RB-0 pedida na autorização
+| Ponto | Resultado |
+|---|---|
+| Parada sem saída como destino final | `fluxo.ts`: com término livre, **uma** parada aonde se chega mas não se sai entra no motor como **última obrigatória** (`finalObrigatorio`). Mais de uma, ou destino fixo: todas para revisão (você decide). Testado |
+| Paradas problemáticas não somem | invariante testado: toda parada está no motor ou em `confirmar`/`revisar`; a lista do app continua com todas (a RB-3 as mostra como "pendente de revisão") |
+| Navegar ao acesso viário | `AcessoViario.navegarPara` ('original' padrão \| 'acesso') e `destinoNavegacao`; a coordenada original nunca muda |
+| Cache | `entradaValida`: mesmo provedor, perfil e versão dos dados, dentro de 7 dias; o sentido está na chave do par |
+| Coordenadas como dado pessoal | registrado; política de retenção proposta em `DECISOES.md` (P-COORD), **a confirmar antes da integração real** |
+
+### 18.4 Testes da RB-1
+- Vitest: `src/platform/cofre.test.ts` (guardar/ler/substituir/excluir, invalidada, formato, erro sem a chave, PWA sem armazenamento), `src/app/ruas.test.ts` (estados da tela, nunca "pronto", aviso no modo pelas ruas), 5 testes novos em `src/core/ruas/ruas.test.ts`.
+- `e2e/ruas.mjs` (emulador): central vazia; cadastrar (campo `password`, valor não aparece na tela, leitura nativa confere); arquivo só com texto cifrado e a chave fora de localStorage/IndexedDB/arquivos; continua depois de fechar e reabrir; substituir; cancelar não muda; formato inválido; **material adulterado → invalidada e apagado**; excluir (cifra e chave do Keystore); backup desligado (`pkgFlags`); **reinstalar apaga**; modo pelas ruas abre o aviso e Cancelar não muda a rota; **a chave de teste não aparece no logcat**. Capturas no artefato `telas-rb1`.
+- `e2e/otimizacao.mjs`: novo caso **fechar e reabrir sem perder a rota** (100 paradas, otimizada, em andamento).
+
+### 18.5 Riscos e limitações
+- **APK de testes é debug:** a WebView pode ser inspecionada por cabo USB (chrome://inspect) e o `run-as` lê os arquivos do app — mas só o texto cifrado; a chave do Keystore não sai do aparelho. Para uso real, um APK release sem depuração.
+- A chave passa pela memória da WebView quando for usada (RB-2); é inevitável com o cliente no app (RB3). O backend seguro continua sendo a alternativa.
+- Falhas transitórias do Keystore que pareçam invalidação apagam a chave: você precisa cadastrar de novo (preferimos isso a manter material inconsistente).
+- Desligar o log da ponte Capacitor também reduz o diagnóstico do emulador (logs do Capacitor no logcat).
+- Teclados com aprendizado: o campo é de senha (o Android não aprende o texto), mas colar da área de transferência deixa a chave no histórico do teclado — recomendação: limpar a área de transferência depois de colar.
 

@@ -33,11 +33,35 @@ async function abrir() {
   return { page, tocar: (x, y) => page.touchscreen.tap(x, y), fechar: () => b.close() }
 }
 
+let caixa = null
+/** Posição da WebView na tela (para tocar com "input tap", um toque nativo de verdade). */
+async function medirWebView() {
+  for (let t = 1; t <= 6 && !caixa; t++) {
+    await device.shell('rm -f /sdcard/ui.xml; uiautomator dump /sdcard/ui.xml').catch(() => {})
+    const xml = String(await device.shell('cat /sdcard/ui.xml').catch(() => ''))
+    const m = xml.match(/class="android\.webkit\.WebView"[^>]*bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"/)
+    if (m) caixa = { x: Number(m[1]), y: Number(m[2]), w: Number(m[3]) - Number(m[1]), h: Number(m[4]) - Number(m[2]) }
+    else await esperar(1500)
+  }
+  if (!caixa) caixa = 'js'
+}
 async function conectar() {
   await device.shell(`am start -W -n ${PKG}/.MainActivity`)
   const webview = await device.webView({ pkg: PKG }, { timeout: 60_000 })
   const page = await webview.page()
-  return { page, tocar: (x, y) => page.touchscreen.tap(x, y), fechar: () => device.close() }
+  return {
+    page,
+    async tocar(x, y) {
+      if (!caixa) await medirWebView()
+      if (caixa === 'js') {
+        // uiautomator não respondeu: clique pelo próprio elemento no ponto (último recurso)
+        return this.page.evaluate(({ x, y }) => document.elementFromPoint(x, y)?.click(), { x, y })
+      }
+      const { iw, ih } = await this.page.evaluate(() => ({ iw: innerWidth, ih: innerHeight }))
+      await device.shell(`input tap ${Math.round(caixa.x + (x * caixa.w) / iw)} ${Math.round(caixa.y + (y * caixa.h) / ih)}`)
+    },
+    fechar: () => device.close(),
+  }
 }
 
 async function reabrir(ctx) {
@@ -45,7 +69,6 @@ async function reabrir(ctx) {
   await esperar(1000)
   const novo = await conectar()
   ctx.page = novo.page
-  ctx.tocar = novo.tocar
   await esperar(2500)
 }
 
@@ -256,7 +279,6 @@ async function main() {
         ;[device] = await android.devices()
         const novo = await conectar()
         ctx.page = novo.page
-        ctx.tocar = novo.tocar
         await esperar(2500)
         const r = await nativo(ctx, 'existe')
         if (r.estado !== 'ausente') throw new Error(`depois de reinstalar: ${r.estado}`)

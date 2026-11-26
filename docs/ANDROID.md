@@ -58,6 +58,13 @@ Autorizado pelo usuário em 2026-11-25. **Experimental**, instalação manual no
 - O Capacitor (`SystemBars.insetsHandling = 'css'`) informa as margens do sistema em `--safe-area-inset-*`.
 - O CSS usa essas margens quando `html[data-nativo]`, marcado no `index.html` só dentro do APK.
 
+## Cofre da chave da API (RB-1, 2026-11-26)
+- Plugin nativo próprio `CofreChave` (`android/app/src/main/java/.../cofre/CofreChavePlugin.java`), registrado em `MainActivity`: Android Keystore + AES-256-GCM; só guardar, ler, existe e apagar; sem logs. Detalhes em ARQUITETURA §18.
+- `capacitor.config.ts`: `loggingBehavior: 'none'` — a ponte do Capacitor não grava parâmetros nem resultados de plugins no logcat (senão a chave apareceria).
+- `MainActivity`: preenchimento automático do Android desligado na WebView (nenhum gerenciador de senhas oferece guardar a chave).
+- Backup continua desligado (`allowBackup=false` + `sem_backup.xml`).
+- Teste no emulador: `e2e/ruas.mjs android` (no workflow `teste-android.yml`, com reinstalação do APK e capturas no artefato `telas-rb1`).
+
 ## Limitações conhecidas desta versão de testes
 - **Sem service worker no APK.** Os arquivos do app já estão no APK e abrem offline. Porém o cache de mapas ("Limpar mapas guardados") ainda não funciona no APK: sem conexão, a rota continua pela lista.
 - **GPS do navegador (WebView), só com o app aberto.** O GPS nativo com segundo plano é a fase F3, com adaptador separado.
