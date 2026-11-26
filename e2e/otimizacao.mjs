@@ -92,8 +92,9 @@ async function abrir() {
       page,
       async tocar(x, y) {
         if (!caixa) await medir()
-        if (caixa === 'cdp') return page.touchscreen.tap(x, y)
-        const { iw, ih } = await page.evaluate(() => ({ iw: innerWidth, ih: innerHeight }))
+        if (caixa === 'cdp') return this.page.touchscreen.tap(x, y)
+        // this.page: depois de reabrir o app, a página é outra
+        const { iw, ih } = await this.page.evaluate(() => ({ iw: innerWidth, ih: innerHeight }))
         await device.shell(`input tap ${Math.round(caixa.x + (x * caixa.w) / iw)} ${Math.round(caixa.y + (y * caixa.h) / ih)}`)
       },
       mudarPosicao: async () => esperar(8000), // o geo fix roda a cada 2 s: algumas leituras no novo lugar
