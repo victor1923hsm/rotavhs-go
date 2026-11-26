@@ -268,10 +268,12 @@ async function otimizarRuas(ctx, botaoInicial = 'OTIMIZAR MINHA ROTA') {
   await tocarLivre(ctx, botaoInicial)
   let estimativa = ''
   let ultimo = ''
+  let calculou = false // só aceita o resultado depois do toque em "Calcular pelas ruas" (avisos antigos não contam)
   const fim = await aguardar(async () => {
     for (const s of ['Autorizar e continuar', 'Calcular pelas ruas', 'Permitir localização']) {
       const b = await botao(ctx.page, s)
       if (b?.livre && !b.desabilitado) {
+        if (s === 'Calcular pelas ruas') calculou = true
         if (s === 'Calcular pelas ruas') estimativa = ((await texto(ctx.page)).match(/Consumo previsto[\s\S]*?Espera mínima[^\n]*/) ?? [''])[0].replace(/\s+/g, ' ')
         await ctx.tocar(b.x, b.y)
         await esperar(400)
@@ -286,6 +288,8 @@ async function otimizarRuas(ctx, botaoInicial = 'OTIMIZAR MINHA ROTA') {
     }
     if (t.includes('Não foi possível calcular pelas ruas')) return { falha: t.split('Não foi possível calcular pelas ruas')[1].slice(0, 200).trim() }
     if (t.includes('Indisponível neste navegador')) return { parar: 'Indisponível neste navegador' }
+    if (!calculou) return null
+    if (await ctx.page.$('.janela-fundo')) return null // ainda calculando
     if (t.includes('Nova ordem sugerida') || t.includes('já é a melhor')) return { recalculo: t.includes('Nova ordem sugerida') ? 'sugestão' : 'já era a melhor' }
     const m = t.match(/Otimizada a partir de: sua posição no momento do cálculo · (\d+) paradas em ([\d,]+) s · ([^\n·]*)/)
     return m ? { paradas: Number(m[1]), algoritmoS: Number(m[2].replace(',', '.')), rotulo: m[3].trim() } : null
@@ -343,8 +347,9 @@ async function casosRuas(ctx, caso) {
       const r = await otimizarRuas(ctx, 'Recalcular pendentes')
       if (r.falha) throw new Error(`o app informou: ${r.falha}`)
       const novos = ors.estado.matriz - m0
-      if (novos !== 1) throw new Error(`pediu ${novos} matrizes (esperado: só a linha da nova posição)`)
-      return `${r.recalculo ?? 'ok'} em ${r.totalS.toFixed(1)} s · 1 pedido de matriz (só a sua nova posição)`
+      // 1 = só a linha da nova posição; 0 = a posição lida ainda era a anterior (tudo já estava no cache)
+      if (novos > 1) throw new Error(`pediu ${novos} matrizes (esperado: no máximo a linha da nova posição)`)
+      return `${r.recalculo ?? 'ok'} em ${r.totalS.toFixed(1)} s · ${novos} pedido(s) de matriz (máximo 1: a sua posição)`
     })
     await caso('Pelas ruas: chave recusada → explica e oferece a rápida (sem troca silenciosa)', async () => {
       ors.modo('chave-invalida')
