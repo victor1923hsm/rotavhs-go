@@ -55,6 +55,8 @@ let provedor: LocationProvider = provedorWeb
 let parar: (() => void) | null = null
 let modoAtual: 'parado' | 'economico' | 'alta' = 'parado'
 const mapas = { mini: 0, cheio: 0 }
+/** Pedidos de alta precisão temporária (ex.: obter a origem ao tocar em OTIMIZAR). */
+let altaTemporaria = 0
 let rotaEmAndamento = false
 let relogioSinal: ReturnType<typeof setInterval> | null = null
 let saltoPendente: Leitura | null = null
@@ -153,7 +155,7 @@ function aoErro(e: ErroLocalizacao) {
 /** Liga, troca o modo ou para o GPS conforme a função, a visibilidade do app, o mapa e a rota. */
 export function sincronizar() {
   const visivel = typeof document === 'undefined' || document.visibilityState !== 'hidden'
-  const desejado = !st().ativa || !visivel ? 'parado' : mapas.cheio > 0 || rotaEmAndamento ? 'alta' : 'economico'
+  const desejado = !st().ativa || !visivel ? 'parado' : mapas.cheio > 0 || rotaEmAndamento || altaTemporaria > 0 ? 'alta' : 'economico'
   if (desejado === modoAtual) return
   parar?.()
   parar = null
@@ -175,6 +177,19 @@ export function mapaNaTela(modo: 'mini' | 'cheio'): () => void {
   sincronizar()
   return () => {
     mapas[modo]--
+    sincronizar()
+  }
+}
+
+/** Alta precisão só enquanto for preciso (devolve a função que libera). */
+export function pedirAltaPrecisao(): () => void {
+  altaTemporaria++
+  sincronizar()
+  let liberado = false
+  return () => {
+    if (liberado) return
+    liberado = true
+    altaTemporaria--
     sincronizar()
   }
 }

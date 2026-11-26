@@ -74,7 +74,7 @@ async function abrir() {
         const { iw, ih } = await page.evaluate(() => ({ iw: innerWidth, ih: innerHeight }))
         await device.shell(`input tap ${Math.round(caixa.x + (x * caixa.w) / iw)} ${Math.round(caixa.y + (y * caixa.h) / ih)}`)
       },
-      mudarPosicao: async () => {},
+      mudarPosicao: async () => esperar(8000), // o geo fix roda a cada 2 s: algumas leituras no novo lugar
       fechar: async () => {
         clearInterval(relogioGps)
         await device.close()
@@ -136,8 +136,23 @@ const botao = async (page, s) => {
     const x = r.left + r.width / 2
     const y = r.top + r.height / 2
     const topo = document.elementFromPoint(x, y)
-    return { x, y, desabilitado: el.disabled, livre: !!topo && (topo === el || el.contains(topo)) }
+    const livre = !!topo && (topo === el || el.contains(topo))
+    const cobre = livre || !topo ? null : `${topo.tagName.toLowerCase()}.${String(topo.className).split(' ').filter(Boolean).join('.')} "${(topo.textContent ?? '').trim().slice(0, 40)}"`
+    return { x, y, desabilitado: el.disabled, livre, cobre }
   }, s)
+}
+/** Espera o botão ficar livre (aviso passageiro por cima, etc.) e toca. */
+async function tocarLivre(ctx, s, ms = 12_000) {
+  let b = null
+  const t0 = Date.now()
+  for (;;) {
+    b = await botao(ctx.page, s)
+    if (b?.livre) break
+    if (Date.now() - t0 > ms) throw new Error(b ? `"${s}" coberto por ${b.cobre}` : `botão "${s}" não encontrado`)
+    await esperar(500)
+  }
+  await ctx.tocar(b.x, b.y)
+  return b
 }
 const texto = (page) => page.evaluate(() => document.body.innerText)
 async function tocarBotao(ctx, s, obrigatorio = true) {
@@ -180,17 +195,14 @@ async function importar(ctx, n) {
 }
 
 async function otimizar(ctx) {
-  const b = await botao(ctx.page, 'OTIMIZAR MINHA ROTA')
-  if (!b) throw new Error('botão OTIMIZAR não encontrado')
-  if (!b.livre) throw new Error('botão OTIMIZAR coberto por outro elemento')
   const t0 = Date.now()
-  await ctx.tocar(b.x, b.y)
+  await tocarLivre(ctx, 'OTIMIZAR MINHA ROTA')
   const comecou = await aguardar(async () => /Obtendo|Calculando|Otimizada a partir|Não foi possível|Usar sua localização/.test(await texto(ctx.page)), 4000, 100)
   if (!comecou) throw new Error('o toque em OTIMIZAR não iniciou nada')
   let ultimo = ''
   const fim = await aguardar(async () => {
     const perm = await botao(ctx.page, 'Permitir localização')
-    if (perm && !perm.livre) throw new Error('"Permitir localização" está coberto por outro elemento (o toque cairia nele)')
+    if (perm && !perm.livre) throw new Error(`"Permitir localização" coberto por ${perm.cobre} (o toque cairia nele)`)
     if (perm) {
       log('  (tocou em "Permitir localização")')
       await ctx.tocar(perm.x, perm.y)
@@ -256,7 +268,7 @@ async function main() {
     await caso('Cancelar durante a otimização (500 paradas)', async () => {
       await importar(ctx, 500)
       const antes = await sequencia(ctx.page)
-      await tocarBotao(ctx, 'OTIMIZAR MINHA ROTA')
+      await tocarLivre(ctx, 'OTIMIZAR MINHA ROTA')
       const cancelar = await aguardar(() => botao(ctx.page, 'Cancelar'), 20_000, 50)
       if (!cancelar) throw new Error('a janela de andamento não apareceu')
       await ctx.tocar(cancelar.x, cancelar.y)
@@ -278,10 +290,10 @@ async function main() {
       await ctx.mudarPosicao(posicao)
       await importar(ctx, 100)
       await otimizar(ctx)
-      await tocarBotao(ctx, 'Iniciar entregas')
+      await tocarLivre(ctx, 'Iniciar entregas')
       await esperar(800)
       const t0 = Date.now()
-      await tocarBotao(ctx, 'Recalcular pendentes')
+      await tocarLivre(ctx, 'Recalcular pendentes')
       const r = await aguardar(async () => {
         const t = await texto(ctx.page)
         return t.includes('Nova ordem sugerida') ? 'sugestão' : t.includes('já é a melhor') ? 'já era a melhor' : null

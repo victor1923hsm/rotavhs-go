@@ -11,7 +11,7 @@ import { decidirAlerta } from '@/core/alertas'
 import { linhaRetaKm, type Ponto } from '@/core/geo'
 import { temCoordenada } from '@/core/parada'
 import { definirFatorTempo, definirObterOrigem, definirOrigemExterna, FalhaOrigem, inicioDaRota, parada, paradas, rotaAtual, useEstado, type OrigemObtida } from './estado'
-import { definirRotaEmAndamento, origemConfiavel, useLocalizacao } from './localizacao'
+import { definirRotaEmAndamento, origemConfiavel, pedirAltaPrecisao, useLocalizacao } from './localizacao'
 import { POSICAO_TESTE } from '@/mock/rota-ficticia'
 
 /** Desvio relevante (G8): mais de 300 m fora do trecho até a próxima parada, por mais de 2 min. */
@@ -146,6 +146,15 @@ export async function obterOrigemAtual(sinal: { cancelado: boolean }, esperaMs =
   // Não espera o pedido de permissão terminar: em algumas WebViews a consulta de permissão nunca responde.
   // O laço abaixo acompanha o estado (e a espera só conta enquanto a explicação não está na tela).
   if (!loc.ativa) void loc.pedirAtivacao().catch(() => useLocalizacao.setState({ explicando: true }))
+  const liberar = pedirAltaPrecisao() // leituras mais rápidas e precisas só enquanto espera a origem
+  try {
+    return await esperarOrigem(sinal, esperaMs, exemplo, pronta)
+  } finally {
+    liberar()
+  }
+}
+
+async function esperarOrigem(sinal: { cancelado: boolean }, esperaMs: number, exemplo: boolean, pronta: () => Ponto | null): Promise<OrigemObtida> {
   let inicio = Date.now()
   const pedidoEm = Date.now()
   for (;;) {
