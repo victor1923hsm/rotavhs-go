@@ -31,6 +31,11 @@ android {
             }
         }
     }
+    // Teste automático no emulador (-PrvTesteLocal): troca a configuração de rede para aceitar HTTP só para
+    // 127.0.0.1 (servidor de respostas controladas). O APK de testes entregue é compilado SEM essa propriedade.
+    if (project.hasProperty('rvTesteLocal')) {
+        sourceSets.debug.res.srcDirs = ['src/testeLocal/res']
+    }
     buildTypes {
         debug {
             if (chave && file(chave).exists()) {

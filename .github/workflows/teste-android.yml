@@ -62,7 +62,7 @@ jobs:
           npm ci
           npm run build:nativo
           npx cap sync android
-          gradle -p android assembleDebug --no-daemon
+          gradle -p android assembleDebug --no-daemon -PrvTesteLocal=true
       - name: Preparar o roteiro de teste
         working-directory: teste
         run: npm i --no-save playwright-core@1.65.1
