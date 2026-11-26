@@ -234,7 +234,58 @@ Detalhes, custos e limitações: `ARQUITETURA.md` §14. Nada implementado antes 
 | R5 | Ordem sem serviço | permitir a ordem **aproximada** local (rotulada "sem ruas"), sem desenhar linhas | é uma estimativa, não o percurso real |
 | R6 | Chave do ORS | você cria a conta e a chave e digita no app (fica só no aparelho) | credencial sua |
 
-## V16 · Rota ativa estilo Spoke (proposta de 2026-11-25, **PENDENTE**)
+## V16 · Rota ativa estilo Spoke (proposta de 2026-11-25; **variante B APROVADA em 2026-11-25 20:53**, implementação na fase R-C)
 Canvas: "RotaVHS-Go — Proposta visual estilo Spoke (traçado real)" (8 telas). Mapa em tela cheia, traçado real (concluído / pendente / até a próxima), pinos numerados com a cor fixa da parada, cartão retrátil da próxima parada, botões flutuantes (minha localização, ver rota inteira, recalcular), alternância Mapa/Lista no topo, toque no pino abre a parada, 3 temas.
 - **Variante A (recomendada):** barra inferior do Figma encostada (V15) mantida; o cartão da próxima parada é o painel flutuante.
 - **Variante B:** barra inferior flutuante (pedida como "menu de seleção inferior flutuante"). **Reabre a V15** e a revisão 12 (menu flutuante de vidro foi substituído pela V15).
+
+## R-A · Aprovação da auditoria e do plano R-A a R-D (2026-11-25 20:53)
+**Interface (V16, variante B APROVADA; substitui a V15):**
+- O mapa é o elemento principal (experiência do Spoke).
+- A barra inferior fica flutuante: margens laterais, cantos arredondados, sobreposta ao mapa, sem ocupar uma faixa inteira.
+- O cartão da próxima entrega é flutuante, retrátil e expansível.
+- Mantêm-se a identidade do RotaVHS-Go e os 3 temas.
+- Os elementos flutuantes não se sobrepõem, respeitam a área segura do Android e não escondem informação importante do mapa.
+- **A R-C apresenta as telas finais para aprovação antes de alterar a interface.**
+
+**Motor (aprovado: várias soluções iniciais + 2-opt + Or-opt + 3-opt + ILS):**
+- Origem **sempre** na posição atual do motorista; **nunca** começa automaticamente pela 1ª parada da SPX. A ordem da SPX fica só como referência.
+- Matriz assimétrica e custo real das inversões de trecho.
+- Término livre por padrão; destino final opcional.
+- Reotimiza só as pendentes.
+- Nunca aplica automaticamente uma ordem pior que a atual, nas mesmas condições.
+- Roda em segundo plano e pode ser cancelado sem perder a rota anterior.
+- Preserva a integridade dos pacotes e das visitas.
+- Objetivo: **menor tempo**, mostrando também a distância.
+
+**Traçado:**
+- Nada de linhas retas.
+- A geometria acompanha as ruas e corresponde **exatamente** à sequência escolhida.
+- A rota completa aparece, com destaque até a próxima entrega.
+- Sem serviço: usa a geometria guardada **só se** corresponder à ordem atual; senão, só pinos e aviso.
+
+**OpenRouteService:** integração aprovada. Avaliar:
+- respostas HTTP 429 e limites por minuto;
+- pontos fora da malha e pares sem percurso;
+- cancelamento e retomada do download da matriz;
+- bateria e dados móveis;
+- tempo do toque até a rota pronta.
+
+Distância indisponível **nunca** é trocada em silêncio por linha reta.
+
+**Segurança:**
+- Plugin de armazenamento seguro (Android Keystore) aprovado.
+- Antes de instalar: verificar manutenção, licença, compatibilidade com o Capacitor, permissões e dependências.
+- A chave nunca aparece em logs, relatórios, Git ou arquivos exportados.
+
+**Testes:**
+- 50, 100, 250 e 500 paradas.
+- Matrizes assimétricas, mão única, vias sem acesso, queda de conexão, cancelamento e reotimização.
+- Tempos separados: matriz, algoritmo e traçado.
+- Comparação com o Spoke com a mesma origem, as mesmas paradas e o mesmo término.
+
+**Execução:**
+- R-A autorizada, com o APK teste.8 para validação física.
+- R-B só depois da validação da R-A.
+- Preservar as correções do teste.7.
+- Não publicar no main nem alterar o PWA publicado.

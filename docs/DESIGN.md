@@ -120,6 +120,11 @@ Os tokens estão em `src/styles/tokens.css`.
 Layout, tamanhos e componentes são **idênticos** nos três temas.
 
 ## 5. Decisões visuais (ver `DECISOES.md`)
+- **V16 — Rota ativa estilo Spoke, variante B: APROVADA em 2026-11-25 20:53** (substitui a V15; implementação na fase R-C, com as telas finais aprovadas antes de mudar a interface).
+  - Mapa como elemento principal; barra inferior **flutuante** (margens laterais, cantos arredondados, sobre o mapa); cartão da próxima entrega flutuante, retrátil e expansível.
+  - Identidade do RotaVHS-Go e os 3 temas mantidos.
+  - Elementos flutuantes sem sobreposição entre si, respeitando a área segura do Android e sem esconder o que importa no mapa.
+  - Propostas no canvas "RotaVHS-Go — Proposta visual estilo Spoke (traçado real)".
 - **V15 — barra inferior: APROVADA em 2026-11-25** e implementada na F1 (`src/app/App.tsx` `BarraInferior`, `.nav` em `app.css`):
   - barra do Figma encostada no fim, 4 abas com Financeiro;
   - substitui a revisão 6 (3 abas) e o menu flutuante de vidro da revisão 12;

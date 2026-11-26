@@ -25,6 +25,14 @@ const em = (p: Ponto, precisaoM = 8) => ler({ lat: p.lat, lon: p.lon, precisaoM,
 const andar = (ms: number) => vi.setSystemTime(Date.now() + ms)
 const metros = (a: Ponto, b: Ponto) => linhaRetaKm(a, b) * 1000
 const proxima = () => E().ordem.find((id) => E().status[id] === 'pendente')!
+/** Espera uma ação assíncrona (otimização em segundo plano, com relógio falso). */
+async function esperar<T>(p: Promise<T>): Promise<T> {
+  let feito = false
+  void p.then(() => (feito = true), () => (feito = true))
+  for (let i = 0; i < 400 && !feito; i++) await vi.advanceTimersByTimeAsync(5)
+  return p
+}
+const otimizar = () => esperar(E().otimizar())
 
 beforeEach(() => {
   vi.useFakeTimers()
@@ -42,27 +50,27 @@ afterEach(() => {
 })
 
 describe('otimizar a partir da posição atual (DEMONSTRAÇÃO)', () => {
-  it('GPS confiável perto da rota: a otimização parte de você; a 1ª parada é a mais perto', () => {
+  it('GPS confiável perto da rota: a otimização parte de você; a 1ª parada é a mais perto', async () => {
     const alvo = PARADAS[40]!
     em(deslocar(alvo, 40, 90))
-    E().otimizar()
+    await otimizar()
     expect(E().origemOtimizacao).toBe('gps')
     const primeira = parada(E().ordem[0]!)
     const maisPerto = [...PARADAS].sort((a, b) => metros(alvo, a) - metros(alvo, b))[0]!
     expect(metros(primeira, alvo)).toBeLessThanOrEqual(metros(maisPerto, alvo) + 1)
   })
-  it('longe da rota (outra cidade) ou sem GPS: usa a posição de teste', () => {
+  it('rota de EXEMPLO longe de você (outra cidade) ou GPS negado: usa a posição de teste', async () => {
     em({ lat: -23.55, lon: -46.63 })
-    E().otimizar()
+    await otimizar()
     expect(E().origemOtimizacao).toBe('teste')
-    L().desativar()
     E().definirFase('revisao')
-    E().otimizar()
+    useLocalizacao.setState({ estado: 'negada', ativa: false })
+    await otimizar()
     expect(E().origemOtimizacao).toBe('teste')
   })
-  it('agrupamentos preservados: mesmas paradas, mesmos Stops, mesmos pacotes', () => {
+  it('agrupamentos preservados: mesmas paradas, mesmos Stops, mesmos pacotes', async () => {
     em(deslocar(PARADAS[10]!, 30, 0))
-    E().otimizar()
+    await otimizar()
     expect([...E().ordem].sort()).toEqual(PARADAS.map((p) => p.id).sort())
     for (const p of PARADAS) expect(parada(p.id)).toEqual(p)
     expect(PARADAS.filter((p) => p.stop === 23)).toHaveLength(2) // parada dividida continua separada
@@ -70,26 +78,27 @@ describe('otimizar a partir da posição atual (DEMONSTRAÇÃO)', () => {
 })
 
 describe('reavaliação dinâmica e proteção contra oscilação', () => {
-  const comecar = () => {
+  const comecar = async () => {
     em(deslocar(PARADAS[0]!, 50, 0))
-    E().otimizar()
+    await otimizar()
     E().definirFase('andamento')
   }
-  it('a ordem nunca muda sem o seu toque (entregas, desvios e recálculo só sugerem)', () => {
-    comecar()
+  it('a ordem nunca muda sem o seu toque (entregas, desvios e recálculo só sugerem)', async () => {
+    await comecar()
     const antes = [...E().ordem]
     for (let i = 0; i < 8; i++) {
       em(deslocar(parada(proxima()), 15, 45))
       E().marcar(i % 3 ? 'entregue' : 'falha')
+      await vi.advanceTimersByTimeAsync(50)
       andar(70_000)
       expect(E().ordem).toEqual(antes)
       if (E().sugestao) E().recusarSugestao()
     }
-    E().recalcular()
+    await esperar(E().recalcular())
     expect(E().ordem).toEqual(antes)
   })
-  it('tremor do GPS (±15 m) por 10 minutos: nenhuma sugestão por desvio', () => {
-    comecar()
+  it('tremor do GPS (±15 m) por 10 minutos: nenhuma sugestão por desvio', async () => {
+    await comecar()
     const espia = vi.spyOn(E(), 'avaliarAutomatico')
     const p = parada(proxima())
     for (let t = 0; t < 120; t++) {
@@ -99,8 +108,8 @@ describe('reavaliação dinâmica e proteção contra oscilação', () => {
     expect(espia).not.toHaveBeenCalled()
     expect(E().sugestao).toBeNull()
   })
-  it('desvio de 650 m: só avalia depois de 2 min fora do trecho', () => {
-    comecar()
+  it('desvio de 650 m: só avalia depois de 2 min fora do trecho', async () => {
+    await comecar()
     const espia = vi.spyOn(useEstado.getState(), 'avaliarAutomatico')
     useEstado.setState({ avaliarAutomatico: espia })
     const de = { lat: -16.6869, lon: -49.2648 }
@@ -117,20 +126,20 @@ describe('reavaliação dinâmica e proteção contra oscilação', () => {
     em(fora)
     expect(espia).toHaveBeenCalledWith('desvio', expect.any(Number))
   })
-  it('intervalo mínimo de 60 s entre sugestões automáticas', () => {
-    comecar()
+  it('intervalo mínimo de 60 s entre sugestões automáticas', async () => {
+    await comecar()
     useEstado.setState({ ultimaAuto: Date.now() })
-    expect(E().avaliarAutomatico('desvio', Date.now() + 30_000)).toBe(false)
+    expect(await esperar(E().avaliarAutomatico('desvio', Date.now() + 30_000))).toBe(false)
   })
-  it('perto da próxima parada (< 200 m), nunca sugere trocá-la', () => {
-    comecar()
+  it('perto da próxima parada (< 200 m), nunca sugere trocá-la', async () => {
+    await comecar()
     const p = parada(proxima())
     em(deslocar(p, 60, 0))
     // Força uma ordem ruim para haver ganho; mesmo assim a próxima protegida não pode mudar.
     const pend = E().ordem.filter((id) => E().status[id] === 'pendente')
     const ruim = [pend[0]!, ...pend.slice(1).reverse()]
     useEstado.setState({ ordem: ruim, ultimaAuto: null })
-    E().avaliarAutomatico('desvio', Date.now())
+    await esperar(E().avaliarAutomatico('desvio', Date.now()))
     const s = E().sugestao
     if (s) expect(s.ordem.find((id) => E().status[id] === 'pendente')).toBe(p.id)
   })

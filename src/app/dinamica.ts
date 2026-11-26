@@ -10,8 +10,9 @@ import { create } from 'zustand'
 import { decidirAlerta } from '@/core/alertas'
 import { linhaRetaKm, type Ponto } from '@/core/geo'
 import { temCoordenada } from '@/core/parada'
-import { definirFatorTempo, definirOrigemExterna, inicioDaRota, parada, paradas, rotaAtual, useEstado } from './estado'
+import { definirFatorTempo, definirObterOrigem, definirOrigemExterna, FalhaOrigem, inicioDaRota, parada, paradas, rotaAtual, useEstado, type OrigemObtida } from './estado'
 import { definirRotaEmAndamento, origemConfiavel, useLocalizacao } from './localizacao'
+import { POSICAO_TESTE } from '@/mock/rota-ficticia'
 
 /** Desvio relevante (G8): mais de 300 m fora do trecho até a próxima parada, por mais de 2 min. */
 export const DESVIO_M = 300
@@ -118,13 +119,49 @@ export function aoMover(agora = Date.now()) {
     return
   }
   if (agora - desde >= DESVIO_MS / fator()) {
-    const sugerida = useEstado.getState().avaliarAutomatico('desvio', agora)
-    // Recomeça a contar; o intervalo mínimo evita repetição.
-    useDinamica.setState({ desvioDesde: null, ultimaAvaliacao: { motivo: 'desvio', sugerida, em: agora } })
+    // Recomeça a contar; o intervalo mínimo evita repetição. O cálculo roda em segundo plano.
+    useDinamica.setState({ desvioDesde: null })
+    void useEstado.getState().avaliarAutomatico('desvio', agora).then((sugerida) => useDinamica.setState({ ultimaAvaliacao: { motivo: 'desvio', sugerida, em: agora } }))
   }
 }
 
 const fator = () => (useLocalizacao.getState().simulado ? FATOR_SIMULADO : 1)
+
+/** Quanto esperar por uma posição confiável ao tocar em OTIMIZAR. */
+export const ESPERA_ORIGEM_MS = 20_000
+
+/**
+ * Origem da otimização (R-A): SEMPRE a sua posição atual. Liga o GPS se estiver desligado (com a explicação de
+ * sempre antes do pedido de permissão) e espera uma leitura confiável. Nunca usa a 1ª parada da SPX.
+ * Única exceção: a rota de EXEMPLO (fictícia) usa a posição de teste quando você está longe dela.
+ */
+export async function obterOrigemAtual(sinal: { cancelado: boolean }, esperaMs = ESPERA_ORIGEM_MS): Promise<OrigemObtida> {
+  const exemplo = rotaAtual().fonte === 'exemplo'
+  const pronta = () => (exemplo ? origemPertoDaRota() : origemConfiavel())
+  const ja = pronta()
+  if (ja) return { ponto: { lat: ja.lat, lon: ja.lon }, tipo: 'gps' }
+  const loc = useLocalizacao.getState()
+  if (exemplo && (loc.ativa || loc.estado === 'negada')) return { ponto: POSICAO_TESTE, tipo: 'teste' }
+  if (loc.estado === 'sem-suporte') throw new FalhaOrigem('sem-suporte')
+  if (!loc.ativa) await loc.pedirAtivacao()
+  const inicio = Date.now()
+  for (;;) {
+    if (sinal.cancelado) throw new FalhaOrigem('cancelada')
+    const o = pronta()
+    if (o) return { ponto: { lat: o.lat, lon: o.lon }, tipo: 'gps' }
+    const l = useLocalizacao.getState()
+    if (exemplo && l.ativa && l.leitura) return { ponto: POSICAO_TESTE, tipo: 'teste' } // longe da rota de exemplo
+    if (l.estado === 'negada') throw new FalhaOrigem('negada')
+    if (l.estado === 'sem-suporte') throw new FalhaOrigem('sem-suporte')
+    if (!l.ativa && !l.explicando) throw new FalhaOrigem('cancelada') // você fechou a explicação sem ligar
+    if (Date.now() - inicio > esperaMs) {
+      if (exemplo) return { ponto: POSICAO_TESTE, tipo: 'teste' }
+      // "Indisponível" pode ser passageiro (o aparelho ainda procurando): só conta no fim da espera.
+      throw new FalhaOrigem(l.estado === 'indisponivel' ? 'indisponivel' : 'tempo')
+    }
+    await new Promise((r) => setTimeout(r, 250))
+  }
+}
 
 let ligado = false
 /** Liga a demonstração (uma vez, ao abrir o app). */
@@ -132,6 +169,7 @@ export function iniciarDinamica() {
   if (ligado) return
   ligado = true
   definirOrigemExterna(() => origemPertoDaRota())
+  definirObterOrigem(obterOrigemAtual)
   definirRotaEmAndamento(useEstado.getState().fase === 'andamento')
   useEstado.subscribe((e, a) => {
     if (e.fase !== a.fase) definirRotaEmAndamento(e.fase === 'andamento')

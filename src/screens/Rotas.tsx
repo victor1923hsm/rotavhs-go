@@ -3,7 +3,9 @@ import { createPortal } from 'react-dom'
 import { useIr } from '@/app/navegacao'
 import { ehFicticia } from '@/app/prototipo'
 import { RefreshCw, Search, X } from 'lucide-react'
-import { ordemOtimizada, parada, resumoDaOrdem, useEstado } from '@/app/estado'
+import { parada, resumoDaOrdem, useEstado } from '@/app/estado'
+import { JanelaOtimizacao } from '@/components/domain/Otimizacao'
+import { temCoordenada } from '@/core/parada'
 import { duracao, numero } from '@/core/formato'
 import { ChipParada } from '@/components/domain/ChipParada'
 import { ChipGps, SeloDemo } from '@/components/domain/Gps'
@@ -30,14 +32,13 @@ export function Rotas() {
   const gpsPerto = !!origemPertoDaRota()
   const loc = useLocalizacao.getState()
   const multiplos = e.rota.paradas.filter((p) => p.pacotes.length > 1).length
-  const spx = resumoDaOrdem(e.rota.ordemSpx)
-  const otm = resumoDaOrdem(ordemOtimizada())
+  const uo = e.ultimaOtimizacao
   const selo = { revisao: ['REVISÃO', ''], otimizada: ['OTIMIZADA', ''], andamento: ['EM ANDAMENTO', 'escuro'] }[e.fase]
   const sub =
     e.fase === 'revisao'
       ? `Revise ${e.ordem.length} paradas antes de otimizar.`
       : e.fase === 'otimizada'
-        ? 'Uma rota mais curta, pronta para sair.'
+        ? 'Ordem otimizada a partir da sua posição, pronta para sair.'
         : proxima
           ? `Próxima parada: ${parada(proxima).stop ?? '?'} · ${parada(proxima).endereco}`
           : 'Todas as paradas foram visitadas.'
@@ -54,7 +55,28 @@ export function Rotas() {
     setCheio(false)
     lista.current?.scrollIntoView({ behavior: 'smooth' })
   }
-  const legenda = `- - - ordem, não é o caminho${e.rota.fonte === 'exemplo' ? ' · ● posição de teste' : ''}`
+  // R4: nenhuma linha reta no mapa. O traçado pelas ruas chega com a fase R-B; até lá, só os pinos.
+  const legenda = `Só os pinos · traçado pelas ruas na próxima fase${e.rota.fonte === 'exemplo' && e.origemOtimizacao !== 'gps' ? ' · ● posição de teste' : ''}`
+  const pendCoord = e.ordem.filter((id) => e.status[id] === 'pendente' && temCoordenada(parada(id)))
+  const opcoesTermino = (
+    <div style={{ marginTop: 10 }}>
+      <span className="rotulo" style={{ color: 'inherit' }}>Onde a rota termina</span>
+      <div className="fichas" role="radiogroup" aria-label="Onde a rota termina">
+        {([['livre', 'Livre (padrão)'], ['partida', 'Voltar ao ponto de partida']] as const).map(([t, nome]) => (
+          <button key={t} role="radio" aria-checked={e.termino.tipo === t} className={`ficha${e.termino.tipo === t ? ' ativa' : ''}`} onClick={() => e.definirTermino({ tipo: t })}>{nome}</button>
+        ))}
+        <select
+          aria-label="Terminar numa parada"
+          className={`ficha${e.termino.tipo === 'parada' ? ' ativa' : ''}`}
+          value={e.termino.tipo === 'parada' ? e.termino.id : ''}
+          onChange={(ev) => e.definirTermino(ev.target.value ? { tipo: 'parada', id: ev.target.value } : { tipo: 'livre' })}
+        >
+          <option value="">Numa parada…</option>
+          {pendCoord.map((id) => <option key={id} value={id}>Parada {parada(id).stop ?? '?'}{parada(id).parte ? ` (${parada(id).parte!.i}/${parada(id).parte!.n})` : ''}</option>)}
+        </select>
+      </div>
+    </div>
+  )
 
   return (
     <div className="rolagem">
@@ -69,25 +91,22 @@ export function Rotas() {
       {e.fase === 'revisao' && (
         <div className="otimizar-cartao">
           {e.destacarOtimizar && <p className="rotulo" role="status" style={{ margin: '0 2px 8px', color: 'inherit', fontWeight: 600 }}>Rota importada e conferida. Próximo passo:</p>}
-          <button className={`botao destaque${e.destacarOtimizar ? ' pulsar' : ''}`} onClick={e.otimizar}>OTIMIZAR MINHA ROTA</button>
+          <button className={`botao destaque${e.destacarOtimizar ? ' pulsar' : ''}`} onClick={() => void e.otimizar()} disabled={!!e.otimizacao}>OTIMIZAR MINHA ROTA</button>
           <p className="rotulo" style={{ margin: '8px 2px 0', color: 'inherit' }}>
-            Cálculo de teste: ordem estimada pela distância em linha reta, sem ruas reais <SeloDemo />. A ordem só muda com o seu toque.
+            Ponto de partida: <b>sua posição atual</b>
+            {gpsPerto ? ' (GPS ativo)' : e.rota.fonte === 'exemplo' ? (loc.ativa && loc.leitura ? ' · você está longe da rota de exemplo: usa a posição de teste' : ' · o GPS liga ao otimizar') : ' · o GPS liga ao otimizar'}.
+            A ordem da SPX fica só como referência.
           </p>
           <p className="rotulo" style={{ margin: '8px 2px 0', color: 'inherit' }}>
-            Ponto de partida:{' '}
-            {gpsPerto ? (
-              <>sua posição atual (GPS) <SeloDemo /></>
-            ) : e.rota.fonte === 'exemplo' ? (
-              <>posição de teste{loc.ativa && loc.leitura ? ' (você está longe da rota de exemplo)' : ' · ligue o GPS para partir de onde você está'}</>
-            ) : (
-              'a 1ª parada da SPX · ligue o GPS para partir de onde você está'
-            )}
+            Objetivo: menor tempo. Distâncias <b>aproximadas, sem ruas</b> (linha reta × 1,35) até a fase R-B. Calcula em segundo plano; a ordem só muda com o seu toque.
           </p>
+          {opcoesTermino}
         </div>
       )}
       {e.fase !== 'revisao' && e.origemOtimizacao && (
         <p className="rotulo" style={{ margin: '4px 0 8px' }}>
-          Otimizada a partir de: {e.origemOtimizacao === 'gps' ? <>sua posição no momento <SeloDemo /></> : e.origemOtimizacao === 'teste' ? 'posição de teste' : '1ª parada da SPX'}
+          Otimizada a partir de: {e.origemOtimizacao === 'gps' ? 'sua posição no momento do cálculo' : e.origemOtimizacao === 'teste' ? 'posição de teste (rota de exemplo)' : '1ª parada da SPX (versão anterior do app)'}
+          {uo ? ` · ${uo.paradas} paradas em ${numero(uo.ms / 1000, 1)} s · distâncias aproximadas, sem ruas` : ''}
         </p>
       )}
 
@@ -119,7 +138,7 @@ export function Rotas() {
             {(e.sugestao.daPosicao || e.sugestao.motivo === 'desvio') && <SeloDemo />}
           </div>
           <p className="sub" style={{ color: 'inherit', opacity: 0.85 }}>
-            −{numero(e.sugestao.ganhoPct, 0)} % · −{numero(e.sugestao.ganhoKm)} km (estimado). A ordem só muda se você tocar em “Usar nova ordem”.
+            {e.sugestao.ganhoMin !== undefined ? `−${numero(e.sugestao.ganhoMin, 0)} min · ` : ''}−{numero(e.sugestao.ganhoKm)} km (aproximado, sem ruas). Só as pendentes; as concluídas não mudam. A ordem só muda se você tocar em “Usar nova ordem”.
           </p>
           <div className="linha" style={{ marginTop: 10 }}>
             <button style={{ background: 'var(--menta)', color: 'var(--sobre-menta)' }} onClick={e.aceitarSugestao}>Usar nova ordem</button>
@@ -130,7 +149,7 @@ export function Rotas() {
 
       <div className="linha" style={{ justifyContent: 'space-between', marginTop: 16 }} ref={lista}>
         <h2 style={{ fontSize: 17, fontWeight: 500, margin: 0 }}>Sequência de paradas</h2>
-        <span className="rotulo">{e.fase === 'revisao' ? 'Ordem da SPX' : `−${numero(spx.km - otm.km)} km · −${spx.min - otm.min} min (estimado)`}</span>
+        <span className="rotulo">{e.fase === 'revisao' ? 'Ordem da SPX (referência)' : uo && uo.melhorou ? `−${numero(Math.max(0, uo.minAntes - uo.min), 0)} min · −${numero(Math.max(0, uo.kmAntes - uo.km))} km (aproximado)` : 'Ordem atual'}</span>
       </div>
       <div>
         {e.ordem.map((id, i) => {
@@ -154,7 +173,8 @@ export function Rotas() {
         {e.fase === 'andamento' && (
           <>
             {proxima && <button className="botao" onClick={() => abrir(proxima)}>Ver próximo pedido →</button>}
-            <button className="botao contorno" onClick={e.recalcular}><RefreshCw size={18} /> Recalcular</button>
+            <button className="botao contorno" onClick={() => void e.recalcular()} disabled={!!e.otimizacao}><RefreshCw size={18} /> Recalcular pendentes</button>
+            {opcoesTermino}
             {confirmar ? (
               <div className="confirmar" role="alertdialog" aria-label="Finalizar a rota">
                 <strong>Finalizar a rota?</strong>
@@ -180,6 +200,7 @@ export function Rotas() {
         )}
       </div>
 
+      <JanelaOtimizacao />
       <Planos />
       <Suspense fallback={null}><Laboratorio /></Suspense>
 

@@ -1,12 +1,13 @@
 // Mapa real (MapLibre + OpenFreeMap). Carregado SÓ na tela Rotas (import dinâmico, G14).
-// Sem tile/sem conexão: "mapa sem conexão" + "Ver lista" (G6). Linha = só o tracejado da ORDEM (G5).
+// Sem tile/sem conexão: "mapa sem conexão" + "Ver lista" (G6). R4 (2026-11-25): NENHUMA linha reta entre as paradas;
+// o traçado real pelas ruas chega na fase R-B. Até lá, só os pinos.
 
 import { useEffect, useRef, useState } from 'react'
 import * as maplibregl from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
 // MapLibre 6: depois do build, o worker precisa ser apontado (senão: "Worker failed to load").
 import urlDoWorker from 'maplibre-gl/dist/maplibre-gl-worker.mjs?url'
-import { corDaParada, inicioDaRota, paradas, useEstado } from '@/app/estado'
+import { corDaParada, inicioDaRota, paradas, rotaAtual, useEstado } from '@/app/estado'
 import { rotuloStop, temCoordenada } from '@/core/parada'
 import { useLocalizacao } from '@/app/localizacao'
 import { MinhaLocalizacao } from './MinhaLocalizacao'
@@ -72,14 +73,8 @@ export default function MapaRota({ ids, proxima, selecionada, modo = 'mini', aoT
     })
     m.on('load', () => {
       clearTimeout(limite)
-      m.addSource('ordem', { type: 'geojson', data: { type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: [] } } })
-      m.addLayer({
-        id: 'ordem',
-        type: 'line',
-        source: 'ordem',
-        paint: { 'line-color': getComputedStyle(document.documentElement).getPropertyValue('--mapa-esquema-traco').trim() || 'black', 'line-width': 2, 'line-dasharray': [2, 2], 'line-opacity': 0.7 },
-      })
-      if (inicio) {
+      // Marcador da posição de TESTE só na rota de exemplo (fictícia). A sua posição real é o ponto azul.
+      if (inicio && rotaAtual().fonte === 'exemplo' && useEstado.getState().origemOtimizacao !== 'gps') {
         const eu = document.createElement('div')
         eu.className = 'posicao-teste'
         eu.title = 'Posição de teste (simulada, não é GPS)'
@@ -97,14 +92,11 @@ export default function MapaRota({ ids, proxima, selecionada, modo = 'mini', aoT
     }
   }, [semConexao])
 
-  // Atualiza o tracejado e os pinos quando a ordem ou o status mudam.
+  // Atualiza os pinos quando a ordem ou o status mudam.
   useEffect(() => {
     const m = mapa.current
     if (!m || !pronto) return
     const ps = paradas(ids).filter(temCoordenada)
-    const inicio = inicioDaRota()
-    const fonte = m.getSource('ordem') as maplibregl.GeoJSONSource | undefined
-    fonte?.setData({ type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: [...(inicio ? [[inicio.lon, inicio.lat]] : []), ...ps.map((p) => [p.lon, p.lat])] } })
     marcadores.current.forEach((mk) => mk.remove())
     marcadores.current = ps.map((p) => {
       const el = document.createElement('button')

@@ -1,9 +1,10 @@
 # Teste de ponta a ponta no ANDROID (emulador com WebView real, toque nativo pelo adb), autorizado em 2026-11-25.
 # Fluxo: importar planilha SPX sintética → "Confirmar importação" → tela Rotas (10, 50, 100, 200 pacotes,
 # endereços repetidos, coordenadas ausentes e inválidas, pacote repetido, XLSX).
+# Fase R-A: OTIMIZAR a partir da posição do GPS do emulador (50, 100, 250, 500 paradas), cancelar e reotimizar.
 # O app testado vem de "ref" (padrão: este commit); o roteiro de teste vem sempre deste commit.
 # Só dados sintéticos. Não publica nada.
-name: Teste Android (importação)
+name: Teste Android (importação e otimização)
 
 on:
   push:
@@ -22,6 +23,10 @@ on:
         description: 'Repetir cada caso N vezes'
         required: false
         default: '1'
+      filtro_otimizacao:
+        description: 'Só os casos de otimização cujo nome contém este texto'
+        required: false
+        default: ''
   workflow_call:
 
 permissions:
@@ -31,7 +36,7 @@ jobs:
   emulador:
     if: github.repository == 'victor1923hsm/rotavhs-go'
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
         with:
@@ -74,4 +79,4 @@ jobs:
           profile: pixel_6
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
-          script: adb install -r app/android/app/build/outputs/apk/debug/app-debug.apk && adb logcat -c && FILTRO="${{ inputs.filtro }}" REPETIR="${{ inputs.repetir || '1' }}" node teste/e2e/importacao.mjs android; r=$?; echo "== memória do aparelho"; adb shell cat /proc/meminfo | head -3; echo "== logcat (WebView, falhas, memória)"; adb logcat -d | grep -iE "FATAL|crash|renderer|lowmemorykiller|am_kill|Out of memory|chromium.*(error|fatal)|tombstone" | tail -40; exit $r
+          script: adb install -r app/android/app/build/outputs/apk/debug/app-debug.apk && adb logcat -c && FILTRO="${{ inputs.filtro }}" REPETIR="${{ inputs.repetir || '1' }}" node teste/e2e/importacao.mjs android; r=$?; echo "== otimização (R-A)"; FILTRO="${{ inputs.filtro_otimizacao }}" node teste/e2e/otimizacao.mjs android; r2=$?; [ $r -eq 0 ] && r=$r2; echo "== memória do aparelho"; adb shell cat /proc/meminfo | head -3; echo "== logcat (WebView, falhas, memória)"; adb logcat -d | grep -iE "FATAL|crash|renderer|lowmemorykiller|am_kill|Out of memory|chromium.*(error|fatal)|tombstone" | tail -40; exit $r

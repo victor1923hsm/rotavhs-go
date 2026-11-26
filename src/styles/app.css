@@ -1425,3 +1425,23 @@ html[data-nativo] .selo {
     animation: none;
   }
 }
+
+/* ---------- Otimização em segundo plano (R-A): barra de progresso ---------- */
+.progresso-otimizacao {
+  height: 8px;
+  border-radius: 4px;
+  background: var(--superficie);
+  overflow: hidden;
+}
+.progresso-otimizacao i {
+  display: block;
+  height: 100%;
+  border-radius: 4px;
+  background: var(--menta-escura);
+  transition: width 0.2s linear;
+}
+@media (prefers-reduced-motion: reduce) {
+  .progresso-otimizacao i {
+    transition: none;
+  }
+}

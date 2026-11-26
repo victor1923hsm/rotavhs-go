@@ -2,9 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { custoEstimado } from './custo'
 import { duracao, lerNumero, numero, reais } from './formato'
 import { estimadaKm, FATOR_URBANO, linhaRetaKm, minutosEstimados } from './geo'
-import { ordemEstimada } from './ordem'
 import { buscarStop, rotuloStop, type Parada } from './parada'
-import { percursoEstimadoKm } from './geo'
 
 describe('distâncias', () => {
   it('linha reta de 1° de latitude ≈ 111 km', () => {
@@ -67,15 +65,3 @@ describe('Stop', () => {
   })
 })
 
-describe('ordem estimada', () => {
-  const linha = [P('1', 1, 0, 0), P('2', 2, 0, 0.03), P('3', 3, 0, 0.01), P('4', 4, 0, 0.02)]
-  it('reordena sem criar, perder ou duplicar paradas', () => {
-    const ids = ordemEstimada(linha, null)
-    expect([...ids].sort()).toEqual(['1', '2', '3', '4'])
-  })
-  it('nunca fica pior que a ordem original pelo modelo', () => {
-    const ids = ordemEstimada(linha, null)
-    const nova = ids.map((id) => linha.find((p) => p.id === id)!)
-    expect(percursoEstimadoKm(nova)).toBeLessThanOrEqual(percursoEstimadoKm(linha) + 1e-9)
-  })
-})
