@@ -123,7 +123,8 @@ async function captura(ctx, nome) {
   if (!shot) return
   mkdirSync('e2e-saida', { recursive: true })
   writeFileSync(`e2e-saida/${alvo}-${nome}.jpg`, shot)
-  log(`TELA ${nome} (e2e-saida/${alvo}-${nome}.jpg)`)
+  // No emulador a captura também vai para o log (base64), para ser conferida sem baixar o artefato.
+  log(alvo === 'android' ? `TELA ${nome} ${shot.toString('base64')}` : `TELA ${nome} (e2e-saida/${alvo}-${nome}.jpg)`)
 }
 const nativo = (ctx, metodo, opcoes = {}) => ctx.page.evaluate(({ metodo, opcoes }) => window.Capacitor.nativePromise('CofreChave', metodo, opcoes), { metodo, opcoes })
 const sh = async (c) => String(await device.shell(c).catch((e) => `ERRO ${e.message}`))
