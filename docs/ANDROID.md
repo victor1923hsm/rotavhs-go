@@ -66,3 +66,20 @@ Autorizado pelo usuário em 2026-11-25. **Experimental**, instalação manual no
 - **Financeiro:**
   - real: custo **estimado** de combustível e entregas;
   - em desenvolvimento: receitas, abastecimentos e despesas (F4).
+
+
+## Teste de otimização no emulador (R-A, 2026-11-25)
+**O que faz:** `teste-android.yml` roda `e2e/importacao.mjs` e depois `e2e/otimizacao.mjs`, com 50, 100, 250 e 500 paradas, cancelar e reotimizar.
+
+**Posição:**
+- vem do GPS do emulador (`adb emu geo fix` a cada 2 s, com a localização ligada por `cmd location set-location-enabled true`);
+- os toques são nativos pelo adb;
+- sem uiautomator, os toques passam a ser feitos pela entrada de toque da WebView.
+
+**Ajustes do emulador:**
+- 4 GB de RAM e heap de 512 MB. Com 2,5 GB, o Android matava os serviços do Google por falta de memória e a página do app fechava.
+- O app em si usa ~10 MB de heap JS com 500 paradas (medido no Chrome).
+
+**Entradas:** `filtro` (importação) e `filtro_otimizacao`. Use `filtro=NADA` para rodar só a otimização.
+
+**Limitação conhecida:** a conexão com a página às vezes cai depois de ~9 importações seguidas ("page closed"). A partir disso, os casos seguintes daquela execução falham. Repetir o job.

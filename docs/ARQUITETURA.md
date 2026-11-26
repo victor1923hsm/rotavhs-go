@@ -616,4 +616,29 @@ Todos usam dados do **OpenStreetMap**. A qualidade de mão única, retornos e ac
   - Reotimizar as pendentes: resposta em 0,5 s.
 - Importação do teste.7 no navegador: 11/11.
 
+**Android (emulador API 34, WebView 113, 2 núcleos, GPU por software, 4 GB; `e2e/otimizacao.mjs` com o GPS do emulador):**
+- Otimização 6/6 em duas execuções seguidas.
+- Tempo do algoritmo:
+
+| Paradas | 1ª execução | 2ª execução |
+|---|---|---|
+| 50 | 1,0 s | 1,1 s |
+| 100 | 1,5 s | 1,5 s |
+| 250 | 2,5 s | 3,9 s |
+| 500 | 3,8 s | 5,6 s |
+
+- Toque → rota pronta: 3,1 a 11,8 s, incluindo a espera pela posição do GPS.
+- Cancelar com 500 paradas: ordem e fase iguais.
+- Reotimizar as pendentes: 2,5–3,2 s.
+- **O S23 FE deve ser mais rápido que este emulador. A medir no aparelho.** Se 500 paradas passarem de 6 s, a busca para no limite de segurança e devolve a melhor ordem encontrada até ali, sempre completa.
+- A ordem da SPX não comanda mais o início: a 1ª parada é a mais próxima da sua posição.
+  - No emulador, a posição "teletransporta" entre os casos. O filtro de saltos do GPS às vezes ainda usa a leitura anterior. Isso é do teste, não do motor.
+
+**Defeitos achados pelo teste no emulador e corrigidos:**
+1. **Pré-existente desde o teste.5.** O chip "GPS: Buscando sinal" usava a classe `busca`, a mesma da tela de busca (absolute, inset 0). Enquanto o GPS procurava sinal, o chip cobria a tela inteira e bloqueava os toques. Corrigido: classe `buscando` + teste que impede a colisão de nomes.
+2. **Novo da R-A, antes do APK.** A janela "Otimizando" ficava por cima da explicação da localização, e o toque em "Permitir localização" caía em "Cancelar". Corrigido: com a explicação aberta, a janela some.
+3. **Robustez.** A espera pela origem não depende mais da consulta de permissão da WebView, que pode não responder. Se não responder em 1,5 s, a explicação aparece. O GPS fica em alta precisão só enquanto espera a origem.
+
+**Importação (teste.7) no emulador:** 11/11 numa execução e 9/11 na outra. As 2 falhas foram "a página fechou" depois da 9ª importação seguida, já registrado no teste.7 como limitação do emulador. Não há falha do app no log do Android. O código da importação não mudou na R-A.
+
 **Na R-A não há matriz nem traçado pelas ruas:** os tempos de matriz e de traçado serão medidos na R-B.
