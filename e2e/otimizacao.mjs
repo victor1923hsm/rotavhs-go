@@ -112,14 +112,26 @@ const escolherArquivo = (page, nome, b64) =>
     },
     { nome, b64 },
   )
-const botao = (page, s) =>
-  page.evaluate((s) => {
+const botao = async (page, s) => {
+  const achou = await page.evaluate((s) => {
+    const el = [...document.querySelectorAll('button')].find((b) => b.textContent?.includes(s))
+    if (!el) return false
+    const r = el.getBoundingClientRect()
+    if (r.top < 0 || r.bottom > innerHeight - 100) el.scrollIntoView({ block: 'center', behavior: 'instant' })
+    return true
+  }, s)
+  if (!achou) return null
+  await esperar(500) // a rolagem termina antes de medir (senão o toque cai no botão de cima)
+  return page.evaluate((s) => {
     const el = [...document.querySelectorAll('button')].find((b) => b.textContent?.includes(s))
     if (!el) return null
-    el.scrollIntoView({ block: 'center' })
     const r = el.getBoundingClientRect()
-    return { x: r.left + r.width / 2, y: r.top + r.height / 2, desabilitado: el.disabled }
+    const x = r.left + r.width / 2
+    const y = r.top + r.height / 2
+    const topo = document.elementFromPoint(x, y)
+    return { x, y, desabilitado: el.disabled, livre: !!topo && (topo === el || el.contains(topo)) }
   }, s)
+}
 const texto = (page) => page.evaluate(() => document.body.innerText)
 async function tocarBotao(ctx, s, obrigatorio = true) {
   const b = await botao(ctx.page, s)
@@ -161,8 +173,13 @@ async function importar(ctx, n) {
 }
 
 async function otimizar(ctx) {
+  const b = await botao(ctx.page, 'OTIMIZAR MINHA ROTA')
+  if (!b) throw new Error('botão OTIMIZAR não encontrado')
+  if (!b.livre) throw new Error('botão OTIMIZAR coberto por outro elemento')
   const t0 = Date.now()
-  await tocarBotao(ctx, 'OTIMIZAR MINHA ROTA')
+  await ctx.tocar(b.x, b.y)
+  const comecou = await aguardar(async () => /Obtendo|Calculando|Otimizada a partir|Não foi possível|Usar sua localização/.test(await texto(ctx.page)), 4000, 100)
+  if (!comecou) throw new Error('o toque em OTIMIZAR não iniciou nada')
   const fim = await aguardar(async () => {
     const perm = await botao(ctx.page, 'Permitir localização')
     if (perm) await ctx.tocar(perm.x, perm.y)
@@ -182,6 +199,9 @@ async function main() {
   const erros = []
   ctx.page.on('pageerror', (e) => erros.push(`pageerror: ${e.name}`))
   await esperar(2500)
+  // O GPS (do emulador ou simulado) chega à página? Só confirma; a posição é sintética.
+  const sonda = await ctx.page.evaluate(() => new Promise((ok) => navigator.geolocation.getCurrentPosition((p) => ok(`ok ±${Math.round(p.coords.accuracy)} m`), (e) => ok(`erro ${e.code}`), { enableHighAccuracy: true, timeout: 20_000, maximumAge: 0 })))
+  log('GPS de teste chegou à página:', sonda)
   const resultados = []
   const caso = async (nome, f) => {
     const r = { caso: nome, ok: false }
