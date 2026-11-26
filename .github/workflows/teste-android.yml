@@ -75,7 +75,10 @@ jobs:
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 34
-          target: google_apis
+          # Imagem sem Google Play Services: no emulador o processo do GMS morria e o Android matava o app junto
+          # ("depends on provider com.google.android.gms/.fonts.provider.FontsProvider in dying proc") — a causa do
+          # "page closed" intermitente. O app não usa o GMS.
+          target: default
           arch: x86_64
           profile: pixel_6
           disable-animations: true
