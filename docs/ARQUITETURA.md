@@ -561,3 +561,59 @@ Todos usam dados do **OpenStreetMap**. A qualidade de mão única, retornos e ac
 | **R-D · Validação** | Relatório: motor atual × novo na mesma matriz real; depois × Spoke numa rota real autorizada | Distância, tempo, tempo de processamento e sequência das visitas, lado a lado |
 
 **Para comparar com o Spoke**, preciso da mesma rota otimizada no Spoke: a sequência das paradas, a distância e o tempo que ele mostra (capturas de tela bastam). Os dados reais ficam só no aparelho e na sessão, e nada vai para o Git.
+
+### 15.7 R-A implementada (2026-11-25) — APK teste.8 em validação
+**Arquivos:**
+- `src/core/otimizacao/motor.ts` (motor v3);
+- `tarefa.ts` e `otimizador.worker.ts` (cálculo em segundo plano);
+- `src/app/otimizador.ts` (Worker; sem Worker, nos testes, roda no processo com o mesmo cancelamento);
+- `src/app/estado.ts` (`otimizar`, `recalcular`, `cancelarOtimizacao`, `definirTermino`, `montarTarefa`);
+- `src/app/dinamica.ts` (`obterOrigemAtual`);
+- `src/components/domain/Otimizacao.tsx` (janela de andamento e de falha);
+- `src/screens/Rotas.tsx` e `src/components/domain/MapaRota.tsx` (sem linha reta).
+
+**Origem:**
+- Sempre a posição atual: o GPS liga ao tocar em OTIMIZAR, com a explicação de sempre antes do pedido do sistema.
+- Espera até 20 s por uma leitura confiável (≤ 50 m, ≤ 30 s de idade).
+- Sem ela: mensagem com o motivo (permissão negada, localização desligada, sinal fraco) e "Tentar de novo". **Nunca** usa a 1ª parada da SPX.
+- Única exceção: a rota de **exemplo** (fictícia) usa a posição de teste quando você está longe dela.
+
+**Término:** livre (padrão), voltar ao ponto de partida ou numa parada escolhida.
+
+**Segurança da execução:**
+- Cancelar encerra o Worker e não muda nada.
+- Se a rota mudar durante o cálculo (outra rota, entrega marcada), o resultado é descartado e o app explica.
+- Sugestões automáticas (G8) só com a sua posição confiável. Um cálculo seu tem prioridade.
+
+**Matriz na R-A:** aproximada local (linha reta × 1,35, 20 km/h, 1,5 min por parada), rotulada "aproximada, sem ruas". A R-B troca pela matriz real.
+
+**Calibração** (bancada, CPU de nuvem; malha sintética com mão única):
+
+| Paradas | Iterações | Tempo | Distância da referência |
+|---|---|---|---|
+| 50 | 400 | ~0,15 s | ótimo |
+| 100 | 800 | ~0,3 s | ótimo |
+| 250 | 1.000 | ~0,45 s | +0,3% |
+| 500 | 1.200 | ~0,7 s | +0,8% |
+
+- A referência é o próprio motor com 15.000 iterações e 3 sementes.
+- Nas instâncias da §15.2, o v3 ficou **3–9% melhor** que a melhor solução anterior, incluindo OR-Tools com 30 s. Exemplo: 500 paradas, 324,1 min contra 354,4 min.
+- O limite de tempo por tamanho é só de segurança: 1 / 2 / 4 / 6 s.
+
+**Resultados reais (locais):**
+- Vitest 251/251 (inclui a regressão 50/100/250/500, força bruta até 9 paradas, mão única, cancelamento, reotimização, origem e integridade) + scripts 68/68.
+- Navegador (Chrome, GPS simulado), `e2e/otimizacao.mjs`, 6/6:
+
+| Paradas | Toque → rota pronta | Algoritmo |
+|---|---|---|
+| 50 | 0,5 s | 0,2 s |
+| 100 | 0,3 s | 0,3 s |
+| 250 | 0,7 s | 0,5 s |
+| 500 | 0,9 s | 0,7 s |
+
+  - A 1ª parada foi a ao lado da sua posição (a última da SPX), não a 1ª da SPX.
+  - Cancelar com 500 paradas: ordem e fase iguais.
+  - Reotimizar as pendentes: resposta em 0,5 s.
+- Importação do teste.7 no navegador: 11/11.
+
+**Na R-A não há matriz nem traçado pelas ruas:** os tempos de matriz e de traçado serão medidos na R-B.
