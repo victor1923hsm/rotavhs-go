@@ -39,7 +39,8 @@ export function RevisaoParadas() {
   const [depoisDe, setDepoisDe] = useState<string>('')
 
   const carregar = useCallback(async () => setDec(await lerDecisoes(e.rotaId)), [e.rotaId])
-  useEffect(() => void carregar(), [carregar])
+  // Recarrega depois de cada cálculo (a lista de revisão é atualizada pelo cálculo pelas ruas).
+  useEffect(() => void carregar(), [carregar, e.ultimaOtimizacao, e.resultadoRuas])
 
   // Paradas pendentes em revisão ou com correção sua (para poder restaurar). Concluídas não entram.
   const itens = useMemo(() => {

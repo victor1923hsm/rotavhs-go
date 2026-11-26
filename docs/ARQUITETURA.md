@@ -1089,3 +1089,120 @@ Nada de rede: **nenhuma chamada a provedor de rotas**. O motor atual continua se
 - O traçado pelas ruas (directions) está no cliente, mas não é desenhado no mapa (RB-4).
 - Rotas de 500 paradas levam pelo menos ~1 min pelo limite de 40 pedidos/min do plano gratuito.
 
+
+## 20. RB-3 — otimização pelas ruas: resultado, comparação e revisão de paradas (autorizada em 2026-11-26 14:52)
+**Envio ao provedor real continua bloqueado** (`ENVIO_REAL_LIBERADO = false`). Tudo foi testado com respostas controladas (dados fictícios). **A otimização real pelas ruas não está validada.**
+
+### 20.1 O que mudou
+| Peça | O que faz |
+|---|---|
+| `src/app/estado.ts` | Modo pelas ruas: o resultado **não é aplicado sozinho** (`resultadoRuas`). `aplicarResultadoRuas` confere que a rota não mudou (mesma ordem e mesmas pendentes); `manterOrdemAtual` descarta. Se o motor não melhorou, a "nova" ordem é a atual (nada a aplicar). `ResumoCalculo` guarda origem, término, km, minutos com e sem o tempo parado, pedidos, correções e se foi **servidor de teste**. `posicionarParada` (só com o seu toque). |
+| `components/domain/ResultadoRuas.tsx` (sob demanda) | Painel no padrão da proposta "Central" do Figma/V16: partida, destino final, paradas, pedidos, **ordem atual × nova** (km e minutos de deslocamento), sequência nova, paradas em revisão, "Aplicar nova ordem" / "Manter a ordem atual". Servidor de teste → selo TESTE e "não é roteirização real". |
+| `screens/RevisaoParadas.tsx` + `components/domain/MapaRevisao.tsx` (sob demanda) | Lista e mapa das paradas em revisão; pino "C" arrastável e toque no mapa; botões de 10 m; "Usar minha posição atual"; original × corrigida (6 casas) e distância; **Confirmar correção…**, **Restaurar original…**, **Até 350/500/1000 m…** (só para "sem rua até 200 m"), mover na sequência, **Recalcular os trechos afetados**. Sem mapa (sem conexão), funciona pelos botões. |
+| `screens/CalcularRuas.tsx` | Central: andamento (etapa, %, cancelar), último resultado (modo, origem, destino, paradas, distância, tempo de deslocamento, pedidos, comparação), consumo do dia e estimativa para as pendentes (incluindo o traçado previsto da RB-4). |
+| `src/app/ruasOtimizacao.ts` | Usa a coordenada **corrigida** quando houver (a original da parada nunca muda); raio maior autorizado; motivos da revisão gravados por rota; contador local de consumo; recusa começar se o previsto não couber no que resta hoje (`cota-local`). |
+| `src/core/ruas/cacheMatriz.ts` | `correcoes`, `raios`, `revisao` por rota (as suas decisões **não vencem** com o cache de 7 dias, somem com a rota); `esquecerPonto` apaga acesso e linha/coluna do ponto reposicionado. |
+| `src/core/ruas/fluxo.ts` | Issue #1785: bloco todo nulo → bissecção S × S para achar o(s) ponto(s) sem rota, refaz o resto sem eles; **no máximo 40 pedidos extras por cálculo**. Resposta incompleta → repete (1 s, 2 s, 4 s; no máximo 4 tentativas). |
+| `src/core/ruas/consumo.ts` | Contador do dia por serviço (só números) + último `x-ratelimit-remaining`. |
+| `src/core/ruas/ors.ts` | 403 classificado: "disallowed" = chave; cota = cota; "Daily quota reached or API key unauthorized" sem cabeçalho = **cota ou chave** (a tela explica as duas). Respostas com formato errado = `resposta-incompleta`. Servidor de teste só `http://127.0.0.1` ou `http://localhost` (`https://localhost` é a origem do próprio app no Android). |
+| JS inicial | 147,9 KB gzip (meta < 150): os avisos de retomada e o armazenamento em memória passaram a ser carregados só quando precisam; RB-3 inteira sob demanda. |
+
+### 20.2 Motor (preservado)
+O motor v3 não mudou: múltiplas soluções iniciais, 2-opt, Or-opt, 3-opt, ILS, matriz assimétrica, origem = sua posição, só pendentes, as três opções de término e cancelamento. A comparação é sempre pela **mesma matriz** (a pelas ruas) e nas mesmas condições: a "ordem atual" é avaliada pelo motor com as mesmas paradas, origem e término; se a nova não for melhor, nada é oferecido para aplicar.
+
+### 20.3 Auditoria da RB-2 (pedida na autorização)
+| Ponto | Resultado |
+|---|---|
+| 11 pedidos × 41 rotas/dia (200 paradas) | **Divergência de base, não de conta.** A coluna "rotas/dia" usava a **previsão de pior caso** (todas as 200 paradas encaixadas → 12 pedidos → 500/12 = 41), enquanto "pedidos" mostrava o **realmente usado** na malha fictícia (16 paradas ficaram fora da matriz → 11 pedidos → 500/11 = 45). A bancada agora mostra as duas (tabela 20.4). Em 500 paradas: previsto 72 → 6/dia; real 71 → 7/dia. |
+| Limites efetivos | Por minuto (com folga de 90%): matriz 36, traçado 36, encaixe 90. Por dia (plano Standard): matriz 500, traçado 2000, encaixe 2000. Por pedido: matriz 3500 pares, traçado 50 pontos, encaixe 5000 pontos. O app conta os pedidos do dia no aparelho e respeita o `x-ratelimit-remaining` quando o provedor informar; o contador não sabe de outros aparelhos com a mesma chave. |
+| Directions na RB-4 | Rota inteira: ⌈n / 49⌉ pedidos (50 → 2; 100 → 3; 200 → 5; 300 → 7; 500 → 11). Na cota de 2000/dia: ≈ 181 traçados completos de 500 paradas/dia. Depois de reordenar, só os trechos que mudaram precisam ser pedidos (a fazer na RB-4); a estimativa já mostra esse número. |
+| Snap na API pública | A página de planos lista o Snap no plano Standard (2000/dia, 100/min) e o aviso de troca de endereço lista `api.heigit.org/openrouteservice/v2/snap`. Em contrário, só o README antigo do GitHub. **Conclusão: muito provável que exista; só uma chamada autorizada confirma.** Se não existir, o encaixe cai para o raio interno da matriz (perde-se o controle 25–200 m). |
+| Respostas incompletas | Matriz com linhas/colunas faltando, valores não numéricos ou negativos, encaixe com quantidade diferente do pedido, JSON quebrado → `resposta-incompleta`: nada é aplicado pela metade; repete até 4 vezes; depois para com mensagem, rota intacta. Bloco todo nulo (#1785) → bissecção. |
+| Cache ao reposicionar | Confirmar uma correção ou restaurar a original apaga o acesso e a linha/coluna do ponto antigo; o recálculo pede só os trechos dele (teste: ≤ 4 pedidos de matriz incluindo a sua posição). |
+| Isolamento de rede dos APKs | O APK **entregue** é compilado sem `-PrvTesteLocal` (só HTTPS). O workflow agora **confere no APK entregue** (aapt2) que `rede.xml` não tem `domain-config` nem `127.0.0.1` e que o manifesto aponta para ele; se tiver, não há APK. O APK com HTTP para 127.0.0.1 existe só dentro do teste automático. |
+| Notas dos releases | O workflow passou a anexar `docs/notas-apk/teste-N.md` (o que funciona, o que é simulado, o que não foi validado). Textos de teste.9 e teste.10 prontos em `docs/notas-apk/`, mas **esta sessão não tem permissão para editar releases** do GitHub: a atualização desses dois precisa ser feita por você (ou fica como está). |
+
+### 20.4 Bancada 50–500 (malha fictícia, CPU de nuvem; não mede o ORS real)
+| Paradas | No motor | Confirmar · revisar | Pedidos encaixe · matriz | Matriz prevista (pior caso) | Rotas/dia (previsto · real) | Traçado RB-4 (pedidos · rotas/dia) | Motor | Espera mínima |
+|---|---|---|---|---|---|---|---|---|
+| 50 | 50 | 0 · 0 | 3 · 1 | 1 | 500 · 500 | 2 · 1000 | 0,12 s | 0 s |
+| 100 | 94 | 6 · 0 | 4 · 3 | 3 | 166 · 166 | 3 · 666 | 0,24 s | 0 s |
+| 150 | 150 | 0 · 0 | 3 · 7 | 7 | 71 · 71 | 4 · 500 | 0,34 s | 0 s |
+| 200 | 184 | 12 · 4 | 4 · 11 | 12 | 41 · 45 | 5 · 400 | 0,30 s | 0 s |
+| 300 | 290 | 7 · 3 | 4 · 27 | 28 | 17 · 18 | 7 · 285 | 0,45 s | 0 s |
+| 500 | 484 | 10 · 6 | 4 · 71 | 72 | 6 · 7 | 11 · 181 | 0,53 s | 60 s |
+
+Issue #1785 simulada (41 pontos, 2 sem rota): 31 pedidos extras para isolar os dois; cada ponto sem rota custa ~15 pedidos. Limite: 40 por cálculo.
+
+### 20.5 Termos de uso, retenção e LGPD — análise preliminar (2026-11-26; **não é parecer jurídico**)
+- **Termos do ORS:** a página de termos do openrouteservice hoje redireciona para a página geral da HeiGIT e o texto não pôde ser lido. Pelo que foi possível conferir: o plano Standard é gratuito e **"Commercial use not allowed"**; quem excede limites repetidamente é bloqueado temporariamente; há atribuição obrigatória. **Pedir à HeiGIT o endereço atual dos termos** (consulta abaixo).
+- **Retenção pelo provedor:** a política de privacidade da HeiGIT (controladora: HeiGIT gGmbH, Heidelberg; DPO eprivacy[at]heigit.org) não trata dos pedidos à API nem das coordenadas; diz só que guarda dados pelo tempo necessário, e que há transferência a países fora da UE sem dizer quais. **Pergunta obrigatória na consulta.**
+- **Dado pessoal:** coordenadas de residências permitem identificar pessoas → dado pessoal (LGPD art. 5º, I). O uso é em atividade remunerada, então a exceção de uso "particular e não econômico" (art. 4º, I) **não** se aplica.
+- **Papéis:** os dados das entregas vêm da SPX. Em geral, quem define a finalidade é a empresa; o entregador trata os dados para executar a entrega. **É preciso conferir o seu contrato/termos com a SPX** sobre usar os dados das entregas em ferramentas de terceiros (o app hoje mantém tudo no aparelho; o envio ao provedor seria um novo compartilhamento).
+- **Transferência internacional:** a HeiGIT fica na Alemanha (UE). Desde 26/01/2026 (Resolução CD/ANPD nº 32/2026) a UE é reconhecida como de proteção adequada, o que permite a transferência por decisão de adequação (LGPD art. 33, I). Fica a ressalva das transferências da HeiGIT para fora da UE (não informadas).
+- **Medidas já no app (P-COORD):** só coordenadas (6 casas) e parâmetros técnicos; autorização explícita nomeando o provedor; sua posição só no momento do cálculo; nenhum serviço de análise; contador e relatórios só com números; tudo da rota apagado ao encerrar/excluir; chave no cofre.
+- **Antes de liberar o envio real:** (1) resposta da HeiGIT; (2) seus termos com a SPX; (3) se for o caso, orientação jurídica; (4) sua autorização específica.
+
+### 20.6 Consulta formal à HeiGIT (você envia, para enquiry@openrouteservice.org; cópia para eprivacy@heigit.org)
+**Em português (para o seu registro):**
+> **Assunto:** Uso da API pública do openrouteservice por um entregador autônomo (trabalho remunerado) e tratamento de coordenadas
+>
+> Olá, equipe da HeiGIT,
+>
+> Sou entregador autônomo no Brasil e desenvolvo um aplicativo de uso pessoal (não vendido nem oferecido a terceiros) para planejar a minha rota diária. Quero usar a API pública do openrouteservice (driving-car: snap, matrix e, depois, directions).
+>
+> Volume previsto para um usuário: 1 rota por dia útil, de 100 a 300 paradas (até 500 em dias raros); de 3 a 72 pedidos de matriz, de 3 a 11 de directions e alguns de snap por rota. Só enviamos coordenadas (nenhum nome, endereço ou identificador de encomenda). A atribuição obrigatória aparece no app.
+>
+> Perguntas:
+> 1. Como o trabalho de entrega é remunerado, esse uso individual é permitido no plano Standard? Se não, qual plano ou acordo vocês recomendam?
+> 2. As coordenadas enviadas nos pedidos (snap, matrix, directions) ficam registradas? Por quanto tempo, para quais finalidades, e são compartilhadas com terceiros?
+> 3. Onde os pedidos são processados e hospedados? Há transferência para países fora da União Europeia? Quais operadores (subprocessadores)?
+> 4. Há um acordo de tratamento de dados (art. 28 do RGPD) disponível para usuários individuais?
+> 5. O endpoint de snap está disponível na API pública em api.heigit.org/openrouteservice/v2/snap?
+> 6. Na matrix, um ponto sem rota pode deixar o bloco inteiro nulo (issue #1785 do GitHub)? Qual é o comportamento esperado hoje?
+> 7. Em que horário (fuso) a cota diária é reiniciada?
+> 8. Qual é o endereço atual dos Termos de Uso do openrouteservice?
+>
+> Também posso hospedar uma instância própria (openrouteservice, Valhalla ou OSRM) no futuro, se for o preferido.
+>
+> Obrigado pelo trabalho com o openrouteservice.
+> Atenciosamente, [seu nome]
+
+**Em inglês (para enviar):**
+> **Subject:** Use of the openrouteservice public API by an individual delivery driver (paid work) and handling of coordinates
+>
+> Hello HeiGIT team,
+>
+> I am an independent parcel delivery driver in Brazil and I am building a personal app (not sold, not offered to others) to plan my own daily route. I would like to use the openrouteservice public API (driving-car: snap, matrix and, later, directions).
+>
+> Expected volume for one user: 1 route per working day, 100 to 300 stops (up to 500 on rare days); 3 to 72 matrix requests, 3 to 11 directions requests and a few snap requests per route. Only coordinates are sent (no names, addresses or parcel identifiers). The required attribution is shown in the app.
+>
+> Questions:
+> 1. Since the delivery work is paid, is this individual use allowed under the Standard plan? If not, which plan or arrangement do you recommend?
+> 2. Are the coordinates sent in requests (snap, matrix, directions) logged? For how long, for which purposes, and are they shared with third parties?
+> 3. Where are requests processed and hosted? Are there transfers to countries outside the European Union? Which processors (sub-processors)?
+> 4. Is a data processing agreement (GDPR Art. 28) available for individual users?
+> 5. Is the snap endpoint available on the public API at api.heigit.org/openrouteservice/v2/snap?
+> 6. In the matrix service, can a single unroutable point make the whole block null (GitHub issue #1785)? What is the expected behaviour today?
+> 7. At what time (time zone) is the daily quota reset?
+> 8. What is the current URL of the openrouteservice Terms of Service?
+>
+> I am also prepared to self-host an instance (openrouteservice, Valhalla or OSRM) later if that is preferred.
+>
+> Thank you for maintaining openrouteservice.
+> Best regards, [your name]
+
+Fontes consultadas em 2026-11-26: openrouteservice.org/plans (planos e "Commercial use not allowed"), aviso "Deprecating api.openrouteservice.org in favour of api.heigit.org" (lista o snap no novo endereço), página da HeiGIT "Privacy Policy" (heigit.org/privacy-policy), documentação do endpoint de snapping (giscience.github.io/openrouteservice), notícias da adequação Brasil–UE (Resolução CD/ANPD nº 32/2026, ANPD/Serpro/escritórios).
+
+### 20.7 Preparação para a RB-4 e a R-C (sem iniciar)
+- **Traçado:** `RoutingProvider.rota()` e o cliente `directions/geojson` já devolvem trechos por parada (`TrechoRuas`), prontos para guardar por rota e desenhar só quando corresponderem à ordem (R4: nenhuma linha reta). O mapa de revisão já desenha pinos sem nenhuma linha.
+- **Geometria local:** o registro por rota (`distanceCache`) pode receber os trechos com a mesma regra de exclusão com a rota.
+- **R-C:** o painel de resultado segue a proposta "Central" da V16; a central e a revisão usam os componentes existentes (cartões, fichas, pinos numerados com a cor fixa da parada), compatíveis com os temas claro, escuro e alta visibilidade e com o mapa em tela cheia, menu flutuante B, cartão retrátil e alternância mapa/lista (nada disso foi implementado).
+
+### 20.8 Riscos e limitações
+- **Otimização real não validada:** nenhum pedido ao ORS real; formatos, erros, Snap, CORS, latência e dados móveis só serão conhecidos com autorização.
+- **No APK teste.11, a revisão de paradas não terá conteúdo** fora do teste automático: ela depende de um cálculo pelas ruas, que segue bloqueado.
+- O contador do dia é local (outros aparelhos com a mesma chave não entram na conta).
+- A bissecção do #1785 custa ~15 pedidos por ponto sem rota (limite de 40 por cálculo); o comportamento real do ORS ainda precisa ser confirmado.
+- A posição corrigida é usada só no cálculo; o **Navegar continua indo para a original** (a opção de navegar até o acesso fica para depois).
+- O painel de resultado e a revisão não têm quadro próprio no Figma (seguem a proposta "Central" e os componentes aprovados): pendência visual para a R-C.

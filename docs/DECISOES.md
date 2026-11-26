@@ -378,3 +378,20 @@ Validação física do **APK teste.9 no S23 FE: pendente**.
 
 **Envio real:** bloqueado no código (`ENVIO_REAL_LIBERADO = false` em `src/app/ruas.ts`). Liberar exige: resposta da HeiGIT, conferência LGPD/termos e sua autorização específica.
 
+
+## RB-2 · Aprovada tecnicamente (2026-11-26 14:52)
+Validação física dos **APKs teste.9 e teste.10 no S23 FE: pendente**.
+
+## RB-3 · Autorizada em 2026-11-26 14:52
+| Requisito | Resumo |
+|---|---|
+| Segurança e privacidade | `ENVIO_REAL_LIBERADO = false` mantido; **nenhuma requisição ao provedor real** sem autorização específica; consulta à HeiGIT em **português e inglês**; verificar termos, retenção de coordenadas, tratamento, transferência internacional e LGPD; coordenadas de residências podem ser dado pessoal; preservar `CofreChave` e as regras de privacidade |
+| Motor | Matriz assimétrica pela malha; manter múltiplas soluções iniciais, 2-opt, Or-opt, 3-opt e ILS; origem = posição atual (nunca a 1ª da SPX); só pendentes; opções de destino final; **comparar com a ordem anterior pela mesma matriz e condições; nunca aplicar automaticamente uma solução pior**; cancelar em qualquer etapa |
+| Paradas problemáticas | Interface de revisão: selecionar no mapa, ajustar a localização, ver original e corrigida, restaurar, **confirmar antes de usar**, recalcular os trechos afetados. Nenhuma encomenda excluída, duplicada ou marcada como entregue automaticamente |
+| Central | Modo rápido aproximado, modo pelas ruas, origem, destino final, distância, tempo de deslocamento, paradas, consumo estimado, andamento, comparação anterior × nova; resultados simulados ou aproximados **rotulados**, nunca apresentados como roteirização real |
+| Auditoria da RB-2 | 11 pedidos × 41 rotas/dia (200 paradas); limites efetivos por minuto e por dia; consumo de Directions da RB-4; disponibilidade real do Snap; respostas incompletas; invalidação do cache ao reposicionar; isolamento das permissões de rede dos APKs de teste; notas dos releases |
+| Preparar (sem iniciar) | RB-4 (traçado real, sem linhas retas, geometria guardada) e R-C (mapa em tela cheia, menu flutuante B, cartão retrátil, marcadores numerados, mapa/lista, temas claro/escuro/alta visibilidade) |
+| Entrega | Regressão completa, emulador, **APK 2.0.0-teste.11**, resultados/limitações/pendências, documentação; **aguardar aprovação antes da RB-4** |
+| Limites | main, PWA publicado e RotaVHS original intactos; **a otimização real não é considerada validada** sem testes autorizados com o provedor real |
+
+**Pendências que continuam bloqueando o envio real:** resposta formal da HeiGIT (consulta em ARQUITETURA §20.6, você envia), conferência LGPD/termos (análise preliminar em §20.5, **não é parecer jurídico**) e a sua autorização específica.

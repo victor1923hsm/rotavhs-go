@@ -69,6 +69,8 @@ Autorizado pelo usuário em 2026-11-25. **Experimental**, instalação manual no
 ## Rede (RB-2, 2026-11-26)
 - `res/xml/rede.xml`: só HTTPS. O teste automático compila com `-PrvTesteLocal`, que troca esse arquivo por um que aceita HTTP **só para 127.0.0.1** (servidor de respostas controladas via `adb reverse`). O APK entregue não usa essa troca.
 - Envio ao provedor de rotas real **bloqueado** no código (`ENVIO_REAL_LIBERADO = false`).
+- **Isolamento de rede (RB-3):** o workflow do APK confere no APK ENTREGUE (aapt2) que `rede.xml` só permite HTTPS (sem `domain-config`, sem `127.0.0.1`); senão, não há APK. O HTTP para 127.0.0.1 existe só no APK do teste automático (`-PrvTesteLocal`), que não é entregue.
+- **Notas do release:** o workflow anexa `docs/notas-apk/teste-N.md` (o que funciona, o que é simulado, o que não foi validado).
 
 ## Limitações conhecidas desta versão de testes
 - **Sem service worker no APK.** Os arquivos do app já estão no APK e abrem offline. Porém o cache de mapas ("Limpar mapas guardados") ainda não funciona no APK: sem conexão, a rota continua pela lista.
