@@ -33,6 +33,25 @@ async function abrir() {
   return { page, tocar: (x, y) => page.touchscreen.tap(x, y), fechar: () => b.close() }
 }
 
+/** WebView do processo ATUAL do app (depois de fechar e abrir, a lista pode ainda ter a do processo antigo). */
+async function webViewAtual(device, PKG) {
+  const t0 = Date.now()
+  for (;;) {
+    const pid = Number(String(await device.shell(`pidof ${PKG}`).catch(() => '')).trim().split(/\s+/)[0])
+    const wv = device.webViews().find((w) => w.pkg() === PKG && (!pid || w.pid() === pid))
+    if (wv) {
+      const page = await wv.page()
+      const vivo = await page.evaluate(() => document.readyState).catch(() => null)
+      if (vivo) return page
+    }
+    if (Date.now() - t0 > 60_000) {
+      const w = await device.webView({ pkg: PKG }, { timeout: 30_000 })
+      return w.page()
+    }
+    await new Promise((r) => setTimeout(r, 500))
+  }
+}
+
 let caixa = null
 /** Posição da WebView na tela (para tocar com "input tap", um toque nativo de verdade). */
 async function medirWebView() {
@@ -47,8 +66,7 @@ async function medirWebView() {
 }
 async function conectar() {
   await device.shell(`am start -W -n ${PKG}/.MainActivity`)
-  const webview = await device.webView({ pkg: PKG }, { timeout: 60_000 })
-  const page = await webview.page()
+  const page = await webViewAtual(device, PKG)
   return {
     page,
     async tocar(x, y) {
