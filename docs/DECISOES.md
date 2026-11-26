@@ -289,3 +289,12 @@ Distância indisponível **nunca** é trocada em silêncio por linha reta.
 - R-B só depois da validação da R-A.
 - Preservar as correções do teste.7.
 - Não publicar no main nem alterar o PWA publicado.
+
+## RB1–RB5 · Fase R-B (plano de 2026-11-26, `ARQUITETURA.md` §16; decisões **PENDENTES**)
+| # | Assunto | Proposta | Por que precisa de você |
+|---|---|---|---|
+| RB1 | Uso comercial do ORS | O plano gratuito diz "Commercial use not allowed". Proposta: **A** (perguntar à HeiGIT) **+ B** (usar só em testes de validação até a resposta). Se a resposta for não, ir para **C** (Valhalla próprio, ≈ € 6/mês) | envolve os termos de um terceiro e um possível custo mensal |
+| RB2 | Plugin de cofre (Android Keystore) | `capacitor-secure-storage-plugin` 0.14.2 (MIT, sem dependências extras), depois da leitura do código | dependência nova |
+| RB3 | Chave no PWA | **Ruas só no APK** (o navegador não tem cofre). O PWA continua com o cálculo aproximado | limita o PWA |
+| RB4 | Otimizar sem conexão com matriz guardada | o 1º trecho (da sua posição) fica *estimado* e rotulado; o resto pelas ruas | mistura uma estimativa num cálculo pelas ruas |
+| RB5 | Ponto fora da malha | a parada fica fora da otimização pelas ruas (no fim, sinalizada), com nova tentativa única de raio de até 1 km | a parada não é otimizada |

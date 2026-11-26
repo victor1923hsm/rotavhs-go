@@ -642,3 +642,201 @@ Todos usam dados do **OpenStreetMap**. A qualidade de mão única, retornos e ac
 **Importação (teste.7) no emulador:** 11/11 numa execução e 9/11 na outra. As 2 falhas foram "a página fechou" depois da 9ª importação seguida, já registrado no teste.7 como limitação do emulador. Não há falha do app no log do Android. O código da importação não mudou na R-A.
 
 **Na R-A não há matriz nem traçado pelas ruas:** os tempos de matriz e de traçado serão medidos na R-B.
+
+**Validação física (S23 FE, planilha real, 2026-11-26, feita pelo usuário):**
+- **Aprovados:** importação · abertura da rota · agrupamento do mesmo endereço · localização atual pelo GPS · otimização de uma rota real · interface responsiva durante a otimização.
+- **Pendentes (não reprovados):** cancelar durante a otimização · reotimizar só as pendentes · onde a rota termina · tempo com rota grande.
+
+## 16. Plano técnico da fase R-B (2026-11-26) — **aguardando aprovação; nada implementado**
+Objetivo da fase:
+- matriz de distância e tempo **pelas ruas**, com mão única e restrições;
+- otimização até 500 paradas sobre essa matriz;
+- **traçado real** no mapa, idêntico à sequência escolhida;
+- cache para uso offline;
+- chave protegida e privacidade preservada.
+
+Sem linhas retas em nenhum caso (R4). O motor v3 da R-A **não muda**: ele já aceita matriz assimétrica.
+
+### 16.1 Fatos verificados em 2026-11-26 (OpenRouteService)
+| Item | Situação atual | Efeito no plano |
+|---|---|---|
+| **Endereço da API** | `api.openrouteservice.org` foi descontinuado. Desde 27/08/2026 tem só 10% da cota, e o desligamento estava previsto para 2–6/11/2026. O endereço novo é `api.heigit.org/openrouteservice/v2/...` | usar **só** `api.heigit.org`; não confiar em exemplos antigos |
+| **Navegador (CORS)** | em maio/2026 o endereço novo bloqueava pedidos do navegador. A equipe corrigiu em 19/05/2026 (o cabeçalho `Authorization` passa) | o PWA pode chamar direto. No APK, usar o HTTP nativo do Capacitor (`CapacitorHttp`), que não depende de CORS. Testar os dois |
+| **Cotas do plano gratuito (Standard)** | Directions 2.000/dia e 40/min · Matrix 500/dia e 40/min · Snap 2.000/dia e 100/min. Passar do limite por minuto → **429**; acabar a cota do dia → **403** | limitador no app + tratamento de 429/403 (§16.4) |
+| **Limites por pedido** | Matrix até 3.500 pares (ex.: 50 × 50) · Directions até 50 pontos · Snap até 5.000 pontos · raio de encaixe padrão 350 m (erro 2010 quando não encaixa) | divisão em blocos (§16.3) |
+| **Defeito conhecido** | issue #1785, aberta em 2024: **um** ponto sem rota pode deixar **todo** o bloco da matriz com `null` | encaixar os pontos na malha **antes** (Snap) e isolar os blocos com `null` (§16.4) |
+| **Licença e uso** | resultados sob **CC-BY 4.0**, com a atribuição "© openrouteservice.org by HeiGIT \| Map data © OpenStreetMap contributors". O plano Standard diz **"Commercial use not allowed"** | atribuição no mapa. **Uso comercial: decisão RB1** (§16.8) |
+| **Veículo** | há perfil `driving-car`; **não há perfil de moto** | carro agora (R3). Moto só com Valhalla |
+
+### 16.2 Arquitetura (as três responsabilidades da §14, agora concretas)
+```
+                       ┌───────────────────────────────┐
+ posição atual + ─────▶│ ProvedorRuas (adaptador)      │──▶ api.heigit.org (ORS)  [R1]
+ paradas pendentes     │  · encaixar(pontos)   (Snap)  │──▶ Valhalla/OSRM próprio [futuro]
+ (SÓ coordenadas)      │  · matriz(origens, destinos)  │
+                       │  · trechos(sequência)         │
+                       └──────────────┬────────────────┘
+                                      │ (blocos, limitador, retomada, cancelar)
+          cache por rota (IndexedDB) ◀┤
+                                      ▼
+  Worker: motor v3 (inalterado) ◀── Matriz {km, min, tipo:'ruas', semPercurso}
+                                      │ ordem escolhida (toque do usuário)
+                                      ▼
+  Geometria por trecho (polyline) ──▶ mapa: 3 camadas (concluído · pendente · até a próxima)
+```
+- **Novos módulos:**
+  - `src/platform/ruas/` (cliente ORS, limitador, erros);
+  - `src/core/ruas/` (blocos, mesclagem da matriz, chaves de cache — puro e testável);
+  - `src/app/ruas.ts` (fluxo, autorização, estado da tela).
+- **Fluxo de OTIMIZAR com ruas:**
+  1. posição atual (R-A);
+  2. Snap das paradas sem encaixe no cache;
+  3. blocos da matriz que faltam;
+  4. motor;
+  5. você aceita a ordem;
+  6. trechos da ordem que faltam;
+  7. mapa.
+
+### 16.3 Matriz pelas ruas para até 500 paradas
+**Divisão em blocos** (≤ 3.500 pares por pedido):
+- linhas de 7 paradas × 500 destinos;
+- a linha da origem vai num pedido à parte (1 × 500);
+- a origem nunca é destino, salvo "voltar ao ponto de partida".
+
+| Paradas | Pedidos de matriz | Pedidos de traçado (≤ 50 pontos) | Dados (aprox., JSON) | Tempo esperado só da matriz |
+|---|---|---|---|---|
+| 50 | 1 (51 × 50) | 2 | ~40 KB | ~1–2 s |
+| 100 | 4 | 3 | ~0,2 MB | ~2–4 s |
+| 250 | 37 | 6 | ~1,2 MB | ~20–40 s |
+| 500 | 73 | 11 | ~4 MB (sem compressão) | **~1,5–2 min** (limite de 40/min) |
+
+- **Cota diária:** 500 pedidos de matriz/dia equivalem a ~6 rotas completas de 500 paradas, ou ~120 de 100 paradas.
+- **Mais rápido que a cota:** a reotimização reaproveita tudo (§16.5).
+- **Limitador:**
+  - janela deslizante de 60 s com no máximo 36 pedidos (folga abaixo de 40);
+  - até 3 pedidos ao mesmo tempo;
+  - barra de progresso: "Baixando distâncias pelas ruas: 41/73".
+- **Tempos medidos separadamente:** encaixe, matriz, algoritmo e traçado, mostrados na tela e no relatório de teste.
+
+### 16.4 Erros e situações difíceis (nunca linha reta em silêncio)
+| Situação | Tratamento |
+|---|---|
+| **429** (limite por minuto) | espera o `Retry-After`, ou 15 s, 30 s, 60 s; continua de onde parou |
+| **403** (cota do dia acabou, ou chave inválida) | para; guarda os blocos já baixados; diz qual dos dois aconteceu. Oferece: tentar amanhã, usar a última rota real guardada ou a ordem **aproximada, rotulada** (R5) |
+| **Ponto fora da malha** (Snap não encaixa a até 350 m) | a parada aparece numa lista: "Parada 37: sem acesso pelas ruas perto da coordenada". Fica **fora** da otimização pelas ruas, no fim, na ordem da SPX, e sem traçado. Você pode tentar com raio maior, uma vez, até 1 km |
+| **Par sem percurso** (`null` na matriz) | o bloco é refeito em partes menores para isolar o par. Se continuar sem percurso, o par fica **proibido** para o motor (custo muito alto, nunca linha reta). Se a ordem final precisar dele, aviso explícito |
+| **Bloco inteiro `null`** (defeito #1785) | refeito em metades até achar o ponto culpado. O ponto vai para a lista "sem acesso" |
+| **Cancelar durante o download** | interrompe os pedidos em andamento. Os blocos já recebidos ficam guardados para a próxima tentativa. A rota não muda |
+| **Queda de conexão / app fechado** | o progresso é gravado bloco a bloco. Na volta: "Continuar o download (41/73)?" |
+| **Serviço fora do ar (5xx, tempo esgotado)** | até 3 tentativas com espera; depois, o mesmo caminho do 403 |
+| **Matriz × traçado** | os números do traçado podem diferir um pouco dos da matriz. A tela mostra os do **traçado** como "pelas ruas" depois que ele chega |
+
+**Mão única e restrições:**
+- **Mão única:** respeitada pelo perfil de carro do ORS. A matriz é assimétrica, e o motor usa o custo real de cada sentido.
+- **Proibições de conversão e acessos restritos:** dependem do mapeamento no OpenStreetMap e de como o ORS os aplica na matriz pública. **Isso será conferido em ruas reais que você conhece** (critério §16.9), não presumido.
+- **Lado da rua da entrega:** o ORS não considera. Limitação registrada.
+
+### 16.5 Cache, reaproveitamento e offline
+- **O que é guardado (IndexedDB, só da rota em uso):**
+  - a matriz em Float32 (500 paradas ≈ 2 MB);
+  - os pontos encaixados;
+  - a geometria por trecho (polyline compacta, ≈ 0,5–1 MB);
+  - a data dos dados do mapa (`graph_date` do ORS).
+- **Chave do cache:** coordenadas arredondadas (~1 m) + perfil + data dos dados.
+- **Privacidade:** o cache é **apagado ao finalizar ou encerrar a rota**, junto com os endereços. Não há reaproveitamento entre dias: a regra definitiva da Etapa 3 proíbe guardar coordenadas depois da rota.
+- **Reotimização (só as pendentes):**
+  - as distâncias entre paradas já estão no cache;
+  - **1 pedido** (a linha da sua posição atual) e o motor;
+  - depois, só os trechos novos da ordem.
+- **Offline:**
+  - **Mapa:** mostra o traçado guardado **só se** corresponder exatamente à ordem atual. Senão, só os pinos e o aviso.
+  - **Otimizar sem conexão:** entre paradas usa a matriz real guardada. A sua posição atual não pode ser calculada pelas ruas sem conexão. **Decisão RB4:** (a) o 1º trecho fica *estimado* e rotulado, ou (b) parte da última parada concluída, também rotulado.
+  - **Sem matriz guardada:** ordem aproximada, rotulada (R5).
+
+### 16.6 Traçado real no mapa
+- **Pedido:** a ordem aceita vai em pedidos de até 50 pontos, um após o outro, com o último ponto repetido no pedido seguinte. A resposta é dividida por trecho (índices `way_points`) e guardada por par de paradas.
+- **Correspondência exata:**
+  - cada trecho guardado é conferido contra a ordem: origem e destino iguais;
+  - se a ordem muda, o mapa só desenha os trechos que ainda valem;
+  - os que faltam são pedidos; enquanto não chegam, **não aparecem**.
+- **Camadas do MapLibre:** concluído (apagado) · pendente (cor da rota) · até a próxima (menta largo com borda). Todo o percurso fica visível. O visual completo estilo Spoke é da R-C; na R-B, só as camadas sobre o mapa atual.
+- **Desempenho:** uma fonte GeoJSON por camada, sem um elemento por trecho. Os pinos viram camada de símbolos na R-C.
+
+### 16.7 Chave da API e dados dos destinatários
+**Plugin de cofre (verificado em 2026-11-26; instalar só depois da verificação final do código):**
+
+| Plugin | Versão / licença | Capacitor 8 | Como guarda no Android | Observação |
+|---|---|---|---|---|
+| `capacitor-secure-storage-plugin` (martinkasa) | 0.14.2 · MIT · atualizado em 11/2026 | sim (`@capacitor/core >= 8`) | Android Keystore + SharedPreferences | **sem dependências extras**. **Recomendado** |
+| `@aparajita/capacitor-secure-storage` | 8.0.1 · MIT · atualizado em 09/2026 | sim | AES-GCM com chave do Android Keystore | traz `@capacitor/app` e `@capacitor/keyboard` como dependências: mais código nativo |
+| `@atroo/capacitor-secure-storage-plugin` | 8.0.0 · MIT | sim | EncryptedSharedPreferences | biblioteca de criptografia descontinuada pelo Google; exige Java 21 |
+
+**Antes de instalar:** ler o código nativo, conferir permissões (nenhuma esperada), tamanho no APK e `allowBackup=false` (já ativo).
+
+**Regras da chave:**
+- **APK:** fica no cofre (Keystore).
+- **PWA:** o navegador **não tem cofre seguro**. **Decisão RB3:** (a) roteamento pelas ruas só no APK, ou (b) também no PWA, com a chave no armazenamento do app e aviso.
+- **Nunca** em logs, relatórios, exportações, Git ou build. Os erros mostram só código e tipo.
+- Um teste automático procura a chave em logs e arquivos.
+- Botões: "Testar chave" (1 pedido de Snap com 1 ponto fictício) e "Apagar chave".
+
+**O que sai do aparelho:**
+- **Sai:** só latitude e longitude (até 6 casas) das paradas **pendentes** e da sua posição, com o perfil `driving-car`.
+- **Não sai:** nome, endereço em texto, telefone, código SPX, número da etiqueta, ids internos, nome do arquivo.
+- **Quando:** com a autorização G4 nas Configurações **e** o consentimento por rota ("Calcular pelas ruas"). A posição atual só vai ao otimizar.
+- **Conferência automática:** um teste intercepta todos os pedidos e falha se algo além de coordenadas e parâmetros técnicos aparecer.
+
+### 16.8 Alternativas gratuitas e o uso comercial
+**Uso comercial:** você usa o app no seu trabalho de entregador. O plano gratuito do ORS **proíbe uso comercial**, e não está claro se uma ferramenta pessoal usada no trabalho entra nisso. **Não sou advogado.**
+
+**Opções (decisão RB1):**
+- **A.** Escrever para `enquiry@openrouteservice.org` e perguntar se o uso pessoal de um entregador autônomo é permitido. Usar o ORS só depois da resposta.
+- **B.** Seguir com o ORS **só para testes de validação** até a resposta.
+- **C.** Ir direto para servidor próprio: sem cota e sem a restrição. Os dados do OpenStreetMap são ODbL e exigem só atribuição.
+
+| Opção | Custo mensal | Cota | Mão única | Moto | Trabalho |
+|---|---|---|---|---|---|
+| **ORS público** | R$ 0 | ~6 rotas de 500 ou ~120 de 100 por dia | sim | **não** | nenhum |
+| **Valhalla próprio** (VPS 2 vCPU / 4 GB) | ≈ € 5,5–6 + IPv4, sem IVA (Hetzner CX23 após o aumento de 15/06/2026; disponibilidade limitada) | ilimitada | sim; custos por veículo sem reprocessar | **sim** | atualizar o mapa (GitHub Actions), HTTPS, chave própria |
+| **OSRM próprio** | igual | ilimitada | sim; matriz mais rápida | não (só com perfil próprio) | igual; trocar o perfil exige reprocessar |
+| GraphHopper | a partir de ~€ 160/mês no plano comercial | — | — | — | fora: o plano gratuito não permite uso comercial |
+
+**Notas:**
+- **Recorte do mapa:** o do seu estado ou região, do Geofabrik. O processamento roda no GitHub Actions e o VPS só serve.
+- **Memória do OSRM:** ~2 GB de RAM por GB de arquivo do mapa no processamento (o planeta inteiro precisa de ~123 GB).
+- **Nada disso roda no seu PC** (regras do projeto).
+- **Mesma interface:** a troca de provedor é só no adaptador `ProvedorRuas`.
+
+### 16.9 Comparação objetiva com o Spoke
+**Mesmas condições:**
+- a **mesma planilha** importada no Spoke e no RotaVHS;
+- a **mesma origem** (o mesmo lugar, no mesmo momento);
+- término **livre** nos dois;
+- carro.
+
+**Coleta:**
+- **Spoke:** a sequência (capturas de tela com os números), os km e o tempo que ele mostra, e o tempo de processamento cronometrado por você.
+- **RotaVHS:** os mesmos dados, medidos pelo app (encaixe, matriz, algoritmo e traçado separados).
+
+**Avaliação justa:**
+- as duas sequências são recalculadas **na mesma matriz do ORS** e com o mesmo traçado do ORS;
+- os números próprios do Spoke ficam numa coluna à parte (ele pode usar outro mapa e trânsito);
+- a ferramenta de comparação roda na bancada, fora do app. Os dados reais ficam só na sessão, nunca no Git.
+
+**Relatório:** distância total · tempo estimado · tempo de processamento · sequência das visitas · diferença em %.
+
+### 16.10 Etapas da R-B (cada uma com APK de teste; sem publicar no main nem no PWA)
+| Etapa | Entrega | Testes |
+|---|---|---|
+| **RB-0** · decisões e conta | RB1–RB5 aprovadas; você cria a conta em `account.heigit.org` (eu oriento) | — |
+| **RB-1** · chave e autorizações | plugin de cofre, Configurações ("Calcular pelas ruas", G4, chave, testar e apagar) | a chave nunca aparece em logs nem exportações; autorização obrigatória |
+| **RB-2** · cliente de rotas | Snap, blocos, limitador, 429/403/5xx, cancelar e retomar, cache | respostas **gravadas e fictícias** (servidor de teste local), queda de rede simulada, 50/100/250/500 com contagem de pedidos |
+| **RB-3** · otimização pelas ruas | matriz real no motor; rótulos "pelas ruas"; reotimização com 1 pedido; offline | testes do motor com matrizes assimétricas reais gravadas (fictícias); conferência da privacidade |
+| **RB-4** · traçado | trechos, correspondência exata com a ordem, 3 camadas no mapa, atribuição | o traçado bate com a ordem depois de reordenar; sem conexão, só o guardado |
+| **RB-5** · validação real | APK no S23 FE com rotas reais suas | tempos separados (matriz, algoritmo, traçado) para 50/100/250/500; 2 mãos únicas conhecidas; modo avião; comparação com o Spoke |
+
+**Riscos:**
+- mudanças do ORS, como a troca de endereço deste ano;
+- a cota pode não bastar em rotas grandes repetidas;
+- turnos/restrições conforme o mapeamento do OSM;
+- tempo de 1,5–2 min na 1ª matriz de 500 paradas.

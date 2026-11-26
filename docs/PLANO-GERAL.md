@@ -297,8 +297,8 @@ Cada fase termina com testes reais, relatório e **pedido de aprovação**. Fase
 ### Fases R-A a R-D (traçado real e motor novo; aprovadas em 2026-11-25 20:53)
 | Fase | Situação | Entrega |
 |---|---|---|
-| R-A · Motor v3 | **em validação: APK teste.8** | motor em Worker, origem na posição atual, cancelar, término livre/destino, só pendentes, linhas retas removidas do mapa |
-| R-B · OpenRouteService | após validar a R-A | matriz e traçado pelas ruas, cache, cota, erros, chave no Keystore |
+| R-A · Motor v3 | **validação física parcial aprovada (6 itens); 4 pendentes** | motor em Worker, origem na posição atual, cancelar, término livre/destino, só pendentes, linhas retas removidas do mapa |
+| R-B · OpenRouteService | **plano técnico pronto (ARQUITETURA §16, decisões RB1–RB5); aguarda aprovação** | matriz e traçado pelas ruas, cache, cota, erros, chave no Keystore |
 | R-C · Visual V16 (variante B) | após a R-B; telas finais aprovadas antes | mapa principal, barra e cartão flutuantes |
 | R-D · Validação | contínua | atual × novo × Spoke, mesmas condições |
 
