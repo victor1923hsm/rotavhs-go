@@ -31,6 +31,7 @@ async function abrir() {
     if (!device) throw new Error('nenhum aparelho Android no adb')
     await device.shell(`pm clear ${PKG}`)
     for (const p of ['ACCESS_FINE_LOCATION', 'ACCESS_COARSE_LOCATION']) await device.shell(`pm grant ${PKG} android.permission.${p}`).catch(() => {})
+    await device.shell('cmd location set-location-enabled true').catch(() => {})
     await device.shell('settings put secure location_mode 3').catch(() => {})
     // GPS do emulador: uma leitura nova a cada 2 s (com variação mínima, para o app ver leituras recentes).
     let k = 0
@@ -169,7 +170,10 @@ async function otimizar(ctx) {
     if (t.includes('Não foi possível otimizar')) throw new Error(`o app informou: ${t.split('Não foi possível otimizar')[1].slice(0, 160).trim()}`)
     return t.match(/Otimizada a partir de: sua posição no momento do cálculo · (\d+) paradas em ([\d,]+) s/)
   }, 90_000, 150)
-  if (!fim) throw new Error('a rota otimizada não apareceu em 90 s')
+  if (!fim) {
+    const t = await texto(ctx.page)
+    throw new Error(`a rota otimizada não apareceu em 90 s · ${(t.match(/GPS: [^\n]*/) ?? ['GPS: ?'])[0]} · ${(t.match(/Obtendo[^\n]*|Calculando[^\n]*/) ?? ['sem janela de andamento'])[0]}`)
+  }
   return { totalS: (Date.now() - t0) / 1000, algoritmoS: Number(fim[2].replace(',', '.')), paradas: Number(fim[1]) }
 }
 

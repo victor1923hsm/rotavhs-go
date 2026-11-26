@@ -143,17 +143,22 @@ export async function obterOrigemAtual(sinal: { cancelado: boolean }, esperaMs =
   const loc = useLocalizacao.getState()
   if (exemplo && (loc.ativa || loc.estado === 'negada')) return { ponto: POSICAO_TESTE, tipo: 'teste' }
   if (loc.estado === 'sem-suporte') throw new FalhaOrigem('sem-suporte')
-  if (!loc.ativa) await loc.pedirAtivacao()
-  const inicio = Date.now()
+  // Não espera o pedido de permissão terminar: em algumas WebViews a consulta de permissão nunca responde.
+  // O laço abaixo acompanha o estado (e a espera só conta enquanto a explicação não está na tela).
+  if (!loc.ativa) void loc.pedirAtivacao().catch(() => useLocalizacao.setState({ explicando: true }))
+  let inicio = Date.now()
+  const pedidoEm = Date.now()
   for (;;) {
     if (sinal.cancelado) throw new FalhaOrigem('cancelada')
+    if (useLocalizacao.getState().explicando) inicio = Date.now() // você ainda está lendo a explicação
     const o = pronta()
     if (o) return { ponto: { lat: o.lat, lon: o.lon }, tipo: 'gps' }
     const l = useLocalizacao.getState()
     if (exemplo && l.ativa && l.leitura) return { ponto: POSICAO_TESTE, tipo: 'teste' } // longe da rota de exemplo
     if (l.estado === 'negada') throw new FalhaOrigem('negada')
     if (l.estado === 'sem-suporte') throw new FalhaOrigem('sem-suporte')
-    if (!l.ativa && !l.explicando) throw new FalhaOrigem('cancelada') // você fechou a explicação sem ligar
+    // Você fechou a explicação sem ligar (2 s de folga para o pedido de permissão responder).
+    if (!l.ativa && !l.explicando && Date.now() - pedidoEm > 2000) throw new FalhaOrigem('cancelada')
     if (Date.now() - inicio > esperaMs) {
       if (exemplo) return { ponto: POSICAO_TESTE, tipo: 'teste' }
       // "Indisponível" pode ser passageiro (o aparelho ainda procurando): só conta no fim da espera.

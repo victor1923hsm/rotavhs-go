@@ -72,6 +72,22 @@ describe('origem: sempre a posição atual do motorista', () => {
     expect(E().otimizacao).toBeNull()
   })
 
+  it('consulta de permissão que nunca responde (algumas WebViews): explica, você permite e a otimização segue', async () => {
+    L().desativar()
+    let lerAqui: (l: Leitura) => void = () => {}
+    usarProvedor({ capabilities: { background: false }, permissao: () => new Promise(() => {}), observar: (_o, a) => ((lerAqui = a), () => {}) })
+    const p = E().otimizar()
+    await vi.advanceTimersByTimeAsync(1600)
+    expect(L().explicando).toBe(true)
+    L().confirmarAtivacao()
+    await vi.advanceTimersByTimeAsync(300)
+    const alvo = parada(E().ordem[5]!)
+    lerAqui({ lat: alvo.lat + 0.0002, lon: alvo.lon, precisaoM: 9, rumo: null, em: Date.now() })
+    await esperar(p)
+    expect(E().fase).toBe('otimizada')
+    expect(E().origemOtimizacao).toBe('gps')
+  })
+
   it('GPS ligado mas sem leitura confiável a tempo: avisa e não usa a 1ª parada', async () => {
     const antes = [...E().ordem]
     em(deslocar(parada(antes[3]!), 10, 0), 400) // precisão ruim: não serve de origem

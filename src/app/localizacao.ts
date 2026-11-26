@@ -79,7 +79,8 @@ export const useLocalizacao = create<Localizacao>((set, get) => ({
       return
     }
     // Pede a permissão de forma clara: primeiro a explicação do app; o navegador só pergunta depois.
-    const p = get().simulado ? 'granted' : await provedor.permissao()
+    // Algumas WebViews nunca respondem à consulta de permissão: depois de 1,5 s, mostra a explicação e pede.
+    const p = get().simulado ? 'granted' : await Promise.race([provedor.permissao(), new Promise<'prompt'>((r) => setTimeout(() => r('prompt'), 1500))])
     if (p === 'granted') get().confirmarAtivacao()
     else set({ explicando: true })
   },
