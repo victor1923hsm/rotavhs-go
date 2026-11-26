@@ -63,7 +63,8 @@ Autorizado pelo usuário em 2026-11-25. **Experimental**, instalação manual no
 - `capacitor.config.ts`: `loggingBehavior: 'none'` — a ponte do Capacitor não grava parâmetros nem resultados de plugins no logcat (senão a chave apareceria).
 - `MainActivity`: preenchimento automático do Android desligado na WebView (nenhum gerenciador de senhas oferece guardar a chave).
 - Backup continua desligado (`allowBackup=false` + `sem_backup.xml`).
-- Teste no emulador: `e2e/ruas.mjs android` (no workflow `teste-android.yml`, com reinstalação do APK e capturas no artefato `telas-rb1`).
+- Teste no emulador: `e2e/ruas.mjs android` (no workflow `teste-android.yml`, com reinstalação do APK e capturas no artefato `telas-rb1` e no log).
+- **Emulador do teste sem Google Play Services (2026-11-26):** com a imagem Google APIs, o GMS morria e o Android encerrava o app junto (dependência do provedor de fontes do GMS na WebView) — era a causa do "page closed" intermitente. A imagem `default` não tem o GMS; o app não depende dele.
 
 ## Limitações conhecidas desta versão de testes
 - **Sem service worker no APK.** Os arquivos do app já estão no APK e abrem offline. Porém o cache de mapas ("Limpar mapas guardados") ainda não funciona no APK: sem conexão, a rota continua pela lista.
