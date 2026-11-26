@@ -164,6 +164,12 @@ export function CalcularRuas() {
         </p>
       </div>
 
+      <div className="cartao" style={{ marginTop: 12 }}>
+        <strong>Testar roteirização real (experimental)</strong>
+        <p className="rotulo" style={{ margin: '4px 0 8px', color: 'inherit' }}>Com pontos fictícios de Goiânia, separado das entregas: matriz real, melhor ordem, traçado pelas ruas e comparação com a rápida.</p>
+        <LinkFluido to="/estatisticas/testar-ruas" className="botao">Abrir o teste</LinkFluido>
+      </div>
+
       <div className="secao">
         <div className="t">Modo de otimização</div>
         <SeletorModo />

@@ -395,3 +395,14 @@ Validação física dos **APKs teste.9 e teste.10 no S23 FE: pendente**.
 | Limites | main, PWA publicado e RotaVHS original intactos; **a otimização real não é considerada validada** sem testes autorizados com o provedor real |
 
 **Pendências que continuam bloqueando o envio real:** resposta formal da HeiGIT (consulta em ARQUITETURA §20.6, você envia), conferência LGPD/termos (análise preliminar em §20.5, **não é parecer jurídico**) e a sua autorização específica.
+
+## RB-4 · Autorizada em 2026-11-26 18:52 (mudança de prioridade: modo experimental de roteirização real)
+| Item | Decisão |
+|---|---|
+| Termos do OpenRouteService (conferidos em 2026-11-26) | Plano Standard gratuito: "Free for everyone to use", **sem uso comercial**. Os termos da conta HeiGIT **proíbem transmitir dados pessoais** (além dos da conta). A chave é pessoal; um app público não pode embutir chave. **Conclusão:** teste de desenvolvimento não comercial com coordenadas **fictícias**, com a sua própria chave no seu aparelho, é permitido. **Coordenadas de destinatários da SPX e a sua posição de GPS NÃO podem ir à API pública** (dado pessoal). Retenção informada pela HeiGIT: coordenadas anonimizadas a 2 casas decimais, IP por 7 dias |
+| Autorizado | Chamadas reais à API **só** com coordenadas fictícias em vias públicas de Goiânia, sem vínculo com destinatários ou encomendas, no modo "Testar roteirização real" |
+| Não autorizado | Envio de coordenadas das planilhas reais da Shopee (`ENVIO_REAL_LIBERADO = false` continua); envio da posição de GPS (no modo experimental o GPS só centraliza o mapa, localmente) |
+| Separação técnica | Banco próprio (`rotavhsgo-experimental`); autorização experimental só por toque, só na memória, por sessão; lista de coordenadas registradas pelo próprio modo (sorteio em Goiânia ou toque no mapa); guarda no cliente ORS recusa coordenada não registrada, fora de Goiânia ou a menos de ~20 m de uma parada da rota SPX; o cliente da rota SPX nunca recebe guarda nem `liberadoReal`, e um teste de código-fonte impede que outro módulo crie cliente com envio real |
+| Traçado | Só geometria real pelas ruas (Directions, GeoJSON) guardada no aparelho; **nenhuma linha reta**, nem no modo aproximado; sem geometria, só os marcadores |
+| Alternativa para uso real com a SPX (a apresentar com custos, sem chamadas) | Motor próprio (OSRM, Valhalla ou ORS) num servidor contratado por você, ou provedor comercial com contrato que permita dados pessoais. Fica para depois do teste.12, com aprovação |
+| Entrega | APK 2.0.0-teste.12; a R-C (reformulação visual) **não** começa antes |

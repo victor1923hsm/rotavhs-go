@@ -24,6 +24,8 @@
   --erro-texto: #7a2e2e;
   --mapa-rua: #d6dbd8;
   --mapa-fundo: #f4f6f5;
+  --tracado: #1d7a4e;           /* traçado pelas ruas no mapa (RB-4) */
+  --tracado-borda: #ffffff;
   /* Cores fixas por Stop (revisão 8). Tons do Figma clareados para o número preto passar de 7:1 */
   --stop-1: #f2cf3a;            /* contraste: --texto/--stop-1 */
   --stop-2: #f49a4c;            /* contraste: --texto/--stop-2 */
@@ -63,6 +65,8 @@
   --erro-texto: #5c1d1d;
   --mapa-rua: #a9b3ae;
   --mapa-fundo: #f4f6f5;
+  --tracado: #0b5c37;           /* traçado pelas ruas no mapa (RB-4) */
+  --tracado-borda: #ffffff;
   --stop-1: #f2cf3a;
   --stop-2: #f49a4c;
   --stop-3: #7fa9f0;
@@ -98,6 +102,8 @@
   --erro-texto: #ffc9c9;
   --mapa-rua: #2c3530;
   --mapa-fundo: #171c19;
+  --tracado: #8edfb3;           /* traçado pelas ruas no mapa (RB-4) */
+  --tracado-borda: #000000;
   --stop-1: #f2cf3a;
   --stop-2: #f49a4c;
   --stop-3: #7fa9f0;

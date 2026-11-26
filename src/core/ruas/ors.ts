@@ -28,6 +28,11 @@ export interface OpcoesORS {
   base?: string
   /** Envio ao ORS real liberado? (falso até a confirmação dos termos e a sua autorização específica). */
   liberadoReal: boolean
+  /**
+   * Guarda obrigatória do envio REAL (RB-4, modo experimental): recebe as coordenadas de cada pedido e LANÇA se
+   * alguma não for permitida. Sem guarda, o envio real é recusado mesmo com `liberadoReal`.
+   */
+  guarda?: (coordenadas: readonly [number, number][]) => void
   tempoLimiteMs?: number
   agendar?: (f: () => void, ms: number) => unknown
   desagendar?: (h: unknown) => void
@@ -86,10 +91,18 @@ export function provedorORS(o: OpcoesORS): RoutingProvider & { readonly base: st
   const desagendar = o.desagendar ?? ((h) => clearTimeout(h as ReturnType<typeof setTimeout>))
 
   async function pedir<T>(caminho: string, corpo: Record<string, unknown>, sinal?: AbortSignal): Promise<{ json: T; bytes: number }> {
-    if (!deTeste && !o.liberadoReal) throw new FalhaProvedor('bloqueado')
+    if (!deTeste && (!o.liberadoReal || !o.guarda)) throw new FalhaProvedor('bloqueado')
     if (!o.chave) throw new FalhaProvedor('chave')
     if (sinal?.aborted) throw new FalhaProvedor('cancelado')
     validarCarga(corpo)
+    if (!deTeste) {
+      const cs = (corpo.locations ?? corpo.coordinates) as [number, number][] | undefined
+      try {
+        o.guarda!(cs ?? [])
+      } catch {
+        throw new FalhaProvedor('bloqueado')
+      }
+    }
     // Conta TODO pedido que sai (o provedor também conta os recusados): contador local da cota do dia.
     o.aoPedir?.(servico(caminho))
     const ctl = new AbortController()

@@ -1143,7 +1143,7 @@ Issue #1785 simulada (41 pontos, 2 sem rota): 31 pedidos extras para isolar os d
 - **Medidas já no app (P-COORD):** só coordenadas (6 casas) e parâmetros técnicos; autorização explícita nomeando o provedor; sua posição só no momento do cálculo; nenhum serviço de análise; contador e relatórios só com números; tudo da rota apagado ao encerrar/excluir; chave no cofre.
 - **Antes de liberar o envio real:** (1) resposta da HeiGIT; (2) seus termos com a SPX; (3) se for o caso, orientação jurídica; (4) sua autorização específica.
 
-### 20.6 Consulta formal à HeiGIT (você envia, para enquiry@openrouteservice.org; cópia para eprivacy@heigit.org)
+### 20.6 Consulta formal à HeiGIT (você envia, para enquiry@openrouteservice.org; cópia para eprivacy@heigit.org) <!-- privacidade:permitir (endereços públicos de contato da HeiGIT) -->
 **Em português (para o seu registro):**
 > **Assunto:** Uso da API pública do openrouteservice por um entregador autônomo (trabalho remunerado) e tratamento de coordenadas
 >
@@ -1206,3 +1206,20 @@ Fontes consultadas em 2026-11-26: openrouteservice.org/plans (planos e "Commerci
 - A bissecção do #1785 custa ~15 pedidos por ponto sem rota (limite de 40 por cálculo); o comportamento real do ORS ainda precisa ser confirmado.
 - A posição corrigida é usada só no cálculo; o **Navegar continua indo para a original** (a opção de navegar até o acesso fica para depois).
 - O painel de resultado e a revisão não têm quadro próprio no Figma (seguem a proposta "Central" e os componentes aprovados): pendência visual para a R-C.
+
+## 21. RB-4 — modo experimental "Testar roteirização real" (autorizado em 2026-11-26 18:52)
+**Onde:** Estatísticas → Calcular pelas ruas → "Testar roteirização real (experimental)" (rota `/estatisticas/testar-ruas`, carregada sob demanda; não pesa na abertura do app).
+
+**Separação do modo SPX (garantias técnicas):**
+- `src/experimental/` tem banco próprio (`rotavhsgo-experimental`, tabela `testes`); nada do teste entra na rota SPX e vice-versa. "Apagar os dados do teste" apaga tudo.
+- `AutorizacaoExperimental` só é criada pelo toque em "Autorizo o envio destas coordenadas de teste" (memória, por sessão; nunca gravada).
+- `RegistroExperimental`: só coordenadas sorteadas pelo modo ou tocadas no mapa, **dentro de Goiânia** (−16,83…−16,55 / −49,42…−49,13), e os pontos de acesso devolvidos pelo encaixe desses pontos.
+- `ors.ts`: o envio ao provedor real exige `liberadoReal` **e** uma `guarda`; a guarda experimental recusa coordenada não registrada, fora de Goiânia ou a < ~20 m de qualquer parada da rota SPX carregada. O cliente da rota SPX continua sem guarda e com `ENVIO_REAL_LIBERADO = false` → bloqueado. Teste de código-fonte (`experimental.test.ts`) falha se outro módulo criar cliente com envio real.
+- GPS: o botão "Centralizar no meu GPS" só move o mapa localmente; a posição **não** é usada como partida nem enviada (termos do ORS: dado pessoal). Partida = ponto público de Goiânia ou tocado no mapa.
+- Transporte: no app nativo, `CapacitorHttp` (sem depender de CORS); no navegador o modo não roda (sem cofre da chave).
+
+**Fluxo:** gerar 10/25/50/100 paradas (sorteio determinístico em vias do centro/Setor Bueno, encaixadas na rua com raio 350 m) ou tocar no mapa → Snap → Matrix (em blocos) → motor v3 no Worker a partir da partida (ou da última visitada) → Directions só para os trechos que faltam (≤ 50 pontos por pedido) → traçado desenhado e guardado. A otimização rápida (matriz estimada) é medida pela **mesma matriz real** para a comparação. "Reotimizar as pendentes" reaproveita encaixe, matriz e trechos já guardados. "Reotimizar sem internet" usa só a matriz salva; o mapa sem fundo cai para um estilo local em branco, mantendo traçado e marcadores.
+
+**Consumo por cálculo de 100 paradas (estimado):** ~1–3 Snap, ~9 Matrix (blocos), ~3 Directions; dentro do plano gratuito (Matrix 500/dia, Directions 2000/dia).
+
+**Validação:** unitária com respostas analíticas; e2e no emulador com servidor local; e2e com o ORS **real** no CI quando o segredo `ORS_CHAVE_TESTE` existe (a chave nunca vai ao repositório nem ao log; o teste confere que ela não aparece no logcat).

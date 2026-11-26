@@ -29,6 +29,7 @@ env:
 jobs:
   teste-android:
     uses: ./.github/workflows/teste-android.yml
+    secrets: inherit
 
   apk:
     needs: teste-android

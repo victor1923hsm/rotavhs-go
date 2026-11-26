@@ -1586,3 +1586,54 @@ html[data-nativo] .selo {
   border-style: dashed;
   cursor: grab;
 }
+
+/* ---------- Testar roteirização real (RB-4, modo experimental) ---------- */
+.pino.pino-partida {
+  background: var(--tinta);
+  color: var(--sobre-tinta);
+  width: 30px;
+  height: 30px;
+  line-height: 26px;
+  font-size: 13px;
+}
+.exp-mapa {
+  position: relative;
+  height: 58vh;
+  min-height: 340px;
+  margin-top: 10px;
+  border-radius: 18px;
+  overflow: hidden;
+  background: var(--mapa-fundo);
+  box-shadow: 0 0 0 1px var(--linha);
+}
+.exp-selo {
+  display: block;
+  margin-top: 8px;
+  padding: 8px 10px;
+  border-radius: 12px;
+  background: var(--aviso);
+  color: var(--sobre-aviso);
+  font-size: 14px;
+}
+.exp-barra {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+.exp-tabela {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 8px;
+  font-size: 14px;
+}
+.exp-tabela th,
+.exp-tabela td {
+  text-align: right;
+  padding: 6px 4px;
+  border-bottom: 1px solid var(--linha);
+}
+.exp-tabela th:first-child,
+.exp-tabela td:first-child {
+  text-align: left;
+}

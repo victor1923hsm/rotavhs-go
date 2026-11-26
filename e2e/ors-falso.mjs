@@ -81,6 +81,23 @@ export function iniciarORSFalso(porta = 8765) {
         const pares = c.sources.map((s) => c.destinations.map((d) => val(s, d)))
         return json(res, 200, { durations: pares.map((l) => l.map((x) => x[0])), distances: pares.map((l) => l.map((x) => x[1])), metadata: { engine: { version: '9.0.0', graph_date: '2026-11-20T00:00:00Z' } } })
       }
+      if (req.url.includes('/directions/')) {
+        // Traçado fictício "em L" (anda na latitude, depois na longitude), como quarteirões: nunca a linha reta.
+        estado.rota++
+        const P = c.coordinates
+        const coords = [P[0]]
+        const wp = [0]
+        const seg = []
+        for (let i = 0; i + 1 < P.length; i++) {
+          const a = P[i]
+          const b = P[i + 1]
+          coords.push([a[0], b[1]], b)
+          wp.push(coords.length - 1)
+          const m = metros(a, [a[0], b[1]]) + metros([a[0], b[1]], b)
+          seg.push({ distance: Math.round(m * 10) / 10, duration: Math.round((m / 1000 / 25) * 3600 * 10) / 10 })
+        }
+        return json(res, 200, { type: 'FeatureCollection', features: [{ type: 'Feature', geometry: { type: 'LineString', coordinates: coords }, properties: { segments: seg, way_points: wp } }] })
+      }
       return json(res, 404, { error: 'desconhecido' })
     })
   })
