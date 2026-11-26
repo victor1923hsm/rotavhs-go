@@ -345,7 +345,14 @@ async function main() {
   await ctx.fechar()
   process.exit(falhas ? 1 : 0)
 }
-main().catch((e) => {
+main().catch(async (e) => {
+  if (alvo === 'android') {
+    try {
+      console.error('processo do app no momento da interrupção:', execSync(`adb shell pidof ${PKG}`).toString().trim() || '(nenhum)')
+    } catch {
+      console.error('processo do app no momento da interrupção: (nenhum)')
+    }
+  }
   console.error('teste interrompido:', e)
   process.exit(2)
 })
