@@ -296,23 +296,24 @@ async function main() {
     }
   }
 
-  await caso('Modo "Pelas ruas reais": OTIMIZAR abre o aviso e Cancelar não muda nada', async () => {
+  await caso('Modo "Pelas ruas reais": OTIMIZAR abre a janela, explica o que falta e Cancelar não muda nada', async () => {
     await ir(ctx.page, '/rotas')
     await aguardar(async () => ((await texto(ctx.page)).includes('OTIMIZAR MINHA ROTA') ? true : null), 15_000)
     const antes = await ctx.page.evaluate(() => [...document.querySelectorAll('.seq-linha .chip-stop')].map((e) => e.textContent.trim()).join())
     await tocar(ctx, 'Pelas ruas reais')
     await captura(ctx, '8-modo-pelas-ruas')
     await tocar(ctx, 'OTIMIZAR MINHA ROTA')
-    const t = await aguardar(async () => ((await texto(ctx.page)).includes('Cálculo pelas ruas em desenvolvimento') ? true : null), 5000)
-    if (!t) throw new Error('o aviso não apareceu')
-    await captura(ctx, '9-aviso-em-desenvolvimento')
+    const esperado = alvo === 'android' ? 'Falta a chave da API' : 'Indisponível neste navegador'
+    const t = await aguardar(async () => ((await texto(ctx.page)).includes(esperado) ? true : null), 10_000)
+    if (!t) throw new Error(`a janela não mostrou "${esperado}"`)
+    await captura(ctx, '9-janela-pelas-ruas')
     await tocar(ctx, 'Cancelar')
     const tt = await texto(ctx.page)
     if (tt.includes('Otimizada a partir') || !tt.includes('REVISÃO')) throw new Error('a rota mudou depois de cancelar')
     const depois = await ctx.page.evaluate(() => [...document.querySelectorAll('.seq-linha .chip-stop')].map((e) => e.textContent.trim()).join())
     if (antes !== depois) throw new Error('a ordem mudou')
     await tocar(ctx, 'Rápida')
-    return 'aviso mostrado; nada calculado nem simulado; a rota não mudou'
+    return `"${esperado}"; nada calculado nem enviado; a rota não mudou`
   })
 
   if (alvo === 'android') {

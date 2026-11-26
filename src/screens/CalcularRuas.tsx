@@ -5,7 +5,7 @@ import { useEffect, useState } from 'react'
 import { ArrowLeft, KeyRound, Loader2, ShieldCheck } from 'lucide-react'
 import { LinkFluido } from '@/app/navegacao'
 import { useEstado } from '@/app/estado'
-import { disponibilidade, PROVEDOR_PREVISTO, useRuas } from '@/app/ruas'
+import { baseDeTeste, disponibilidade, PROVEDOR_PREVISTO, useRuas } from '@/app/ruas'
 import { validarChave } from '@/platform/cofre'
 import { SeletorModo } from '@/components/domain/ModoOtimizacao'
 
@@ -37,7 +37,8 @@ export function CalcularRuas() {
     void r.verificarCofre()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
-  const d = disponibilidade(r.cofre, online)
+  const teste = baseDeTeste()
+  const d = disponibilidade(r.cofre, online, teste)
   const temChave = r.cofre === 'cadastrada'
   const podeCadastrar = r.cofre !== 'pwa' && r.cofre !== 'verificando'
   const cancelarEdicao = () => {
@@ -75,7 +76,7 @@ export function CalcularRuas() {
       <div className="cartao ruas-aviso" role="note">
         <strong>Integração pelas ruas em desenvolvimento</strong>
         <p className="rotulo" style={{ margin: '4px 0 0', color: 'inherit' }}>
-          Nesta versão nenhuma rota pelas ruas é calculada e <b>nenhuma coordenada é enviada</b>. A otimização que funciona é a <b>rápida</b> (distâncias aproximadas, sem ruas).
+          O envio ao provedor real <b>ainda não está liberado</b>: nenhuma coordenada é enviada a ele nesta versão. {teste ? <>Está ligado um <b>servidor de TESTE local</b> com respostas controladas (dados fictícios).</> : <>A otimização disponível é a <b>rápida</b> (distâncias aproximadas, sem ruas).</>}
         </p>
       </div>
 
@@ -159,10 +160,23 @@ export function CalcularRuas() {
       </div>
 
       <div className="secao">
+        <div className="t">Autorização de envio</div>
+        {r.consentimento ? (
+          <div className="cartao">
+            <strong>Autorizado em {new Date(r.consentimento.em).toLocaleDateString('pt-BR')}</strong>
+            <p className="rotulo" style={{ margin: '4px 0 8px', color: 'inherit' }}>Provedor: {r.consentimento.provedor}. Só coordenadas, só no momento do cálculo.</p>
+            <button className="botao contorno" onClick={() => { r.revogarEnvio(); avisar('Autorização revogada · nada será enviado sem pedir de novo') }}>Revogar autorização</button>
+          </div>
+        ) : (
+          <p className="rotulo">Não autorizado. O app pede a sua autorização antes do primeiro envio, dizendo qual provedor recebe os dados.</p>
+        )}
+      </div>
+
+      <div className="secao">
         <div className="t">Privacidade</div>
         <p className="rotulo">
-          Quando a integração existir, só sairão do aparelho <b>coordenadas</b> (a sua posição e as das paradas) e parâmetros técnicos: nunca nomes, telefones, endereços em texto, códigos SPX ou números de etiqueta.
-          Coordenadas de entrega também podem ser <b>dados pessoais</b>: o envio vai depender da sua autorização, e a política de retenção será confirmada com você antes da integração real. Ao finalizar a rota, a matriz e o traçado guardados são apagados junto com a rota.
+          Só saem do aparelho <b>coordenadas</b> (a sua posição no momento do cálculo e as das paradas pendentes) e parâmetros técnicos: nunca nomes, telefones, endereços em texto, códigos SPX, números de etiqueta ou a planilha, e nada vai para telemetria. A sua posição não é enviada de forma contínua.
+          Coordenadas de entrega podem ser <b>dados pessoais</b> (LGPD). O que vem do provedor (distâncias e acessos) fica só neste aparelho, por no máximo 7 dias, e é apagado quando a rota é encerrada ou excluída.
         </p>
       </div>
     </div>

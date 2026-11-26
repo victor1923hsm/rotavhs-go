@@ -49,14 +49,15 @@ describe('central de otimização', () => {
     expect(useRuas.getState().cofre).toBe('erro')
   })
 
-  it('o cálculo pelas ruas nunca aparece como pronto nesta versão', () => {
+  it('sem servidor de teste, o cálculo pelas ruas nunca aparece como pronto (envio real não liberado)', () => {
     for (const e of ['verificando', 'pwa', 'ausente', 'cadastrada', 'invalidada', 'erro'] as const)
-      for (const on of [true, false]) {
-        const d = disponibilidade(e, on)
-        expect(d.pronto).toBe(false)
-      }
-    expect(disponibilidade('cadastrada', true).detalhe).toMatch(/em desenvolvimento/)
+      for (const on of [true, false]) expect(disponibilidade(e, on).pronto).toBe(false)
+    expect(disponibilidade('cadastrada', true).detalhe).toMatch(/não está liberado/)
     expect(disponibilidade('cadastrada', false).titulo).toMatch(/sem conexão/)
+    // com o servidor de TESTE local: pronto, e rotulado como teste
+    const t = disponibilidade('cadastrada', true, 'http://127.0.0.1:9/ors')
+    expect(t.pronto).toBe(true)
+    expect(t.titulo).toMatch(/TESTE/)
   })
 
   it('modo "pelas ruas" abre o aviso em vez de calcular', () => {

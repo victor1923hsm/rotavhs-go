@@ -79,6 +79,25 @@ export class MontagemMatriz {
     return i !== j && Number.isFinite(this.min[k]!) && this.estimado[k] !== 2
   }
 
+  /** Tudo o que ainda falta depois do download não foi pedido porque não é usado: marca como "não usado" (0). */
+  dispensarNaoPedidos() {
+    for (let k = 0; k < this.n * this.n; k++)
+      if (Number.isNaN(this.min[k]!)) {
+        this.min[k] = 0
+        this.km[k] = 0
+        this.estimado[k] = 2
+      }
+  }
+
+  /** Copia um par conhecido de outra fonte (cache). Não sobrescreve o que já veio do provedor. */
+  copiar(i: number, j: number, min: number, km: number) {
+    const k = i * this.n + j
+    if (i === j || !Number.isNaN(this.min[k]!)) return
+    this.min[k] = min
+    this.km[k] = km
+    this.estimado[k] = 0
+  }
+
   conhecido(i: number, j: number) {
     return !Number.isNaN(this.min[i * this.n + j]!)
   }
@@ -106,14 +125,16 @@ export class MontagemMatriz {
    * (o maior componente fortemente conexo alcançável a partir da origem). As demais (só se chega e não se sai, ou
    * vice-versa — mão única sem saída, ilha de dados) não entram no cálculo: vão para revisão (RB5), sem ir para o fim.
    */
-  componentePrincipal(): { dentro: number[]; fora: number[] } {
+  componentePrincipal(paradas?: readonly number[]): { dentro: number[]; fora: number[] } {
     const n = this.n
+    const ehParada = new Uint8Array(n)
+    for (const j of paradas ?? Array.from({ length: n - 1 }, (_, k) => k + 1)) ehParada[j] = 1
     const ok = (i: number, j: number) => i !== j && Number.isFinite(this.min[i * n + j]!) && this.estimado[i * n + j] !== 2
     // Kosaraju sobre as paradas 1..n-1.
     const ordem: number[] = []
     const visto = new Uint8Array(n)
     for (let r = 1; r < n; r++) {
-      if (visto[r]) continue
+      if (!ehParada[r] || visto[r]) continue
       const pilha: [number, number][] = [[r, 1]]
       visto[r] = 1
       while (pilha.length) {
@@ -122,7 +143,7 @@ export class MontagemMatriz {
         let avancou = false
         for (let j = topo[1]; j < n; j++) {
           topo[1] = j + 1
-          if (!visto[j] && ok(v, j)) {
+          if (ehParada[j] && !visto[j] && ok(v, j)) {
             visto[j] = 1
             pilha.push([j, 1])
             avancou = true
@@ -144,7 +165,7 @@ export class MontagemMatriz {
       comp[r] = nc
       while (fila.length) {
         const v = fila.pop()!
-        for (let j = 1; j < n; j++) if (comp[j]! < 0 && ok(j, v)) {
+        for (let j = 1; j < n; j++) if (ehParada[j] && comp[j]! < 0 && ok(j, v)) {
           comp[j] = nc
           fila.push(j)
         }
@@ -153,13 +174,13 @@ export class MontagemMatriz {
     }
     const tamanho = new Int32Array(nc)
     const alcancavel = new Uint8Array(nc)
-    for (let j = 1; j < n; j++) if (ok(0, j)) alcancavel[comp[j]!] = 1
-    for (let j = 1; j < n; j++) if (alcancavel[comp[j]!]) tamanho[comp[j]!]!++
+    for (let j = 1; j < n; j++) if (ehParada[j] && ok(0, j)) alcancavel[comp[j]!] = 1
+    for (let j = 1; j < n; j++) if (ehParada[j] && alcancavel[comp[j]!]) tamanho[comp[j]!]!++
     let melhor = -1
     for (let c = 0; c < nc; c++) if (tamanho[c]! > 0 && (melhor < 0 || tamanho[c]! > tamanho[melhor]!)) melhor = c
     const dentro: number[] = []
     const fora: number[] = []
-    for (let j = 1; j < n; j++) (comp[j] === melhor ? dentro : fora).push(j)
+    for (let j = 1; j < n; j++) if (ehParada[j]) (comp[j] === melhor ? dentro : fora).push(j)
     return { dentro, fora }
   }
 

@@ -1477,3 +1477,31 @@ html[data-nativo] .selo {
   font-weight: 600;
   opacity: 0.8;
 }
+.etapas-ruas {
+  list-style: none;
+  margin: 8px 0 10px;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+.etapas-ruas li {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  font-size: 15px;
+  opacity: 0.6;
+}
+.etapas-ruas li.feita,
+.etapas-ruas li.atual {
+  opacity: 1;
+}
+.etapas-ruas li.atual {
+  font-weight: 600;
+}
+.etapas-ruas .ponto {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  box-shadow: inset 0 0 0 2px currentColor;
+  flex: none;
+}

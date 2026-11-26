@@ -11,6 +11,47 @@ export type EstadoCofreTela = 'verificando' | 'pwa' | EstadoChave | 'erro'
 export const PROVEDOR_PREVISTO = { nome: 'OpenRouteService', uso: 'só desenvolvimento e testes', consulta: 'consulta à HeiGIT sobre uso comercial: pendente' } as const
 
 const CHAVE_MODO = 'rotavhsgo.modoOtimizacao'
+const CHAVE_CONSENTIMENTO = 'rotavhsgo.consentimentoRuas'
+/** Só para testes: servidor de respostas controladas (aceito apenas em 127.0.0.1, localhost ou 10.0.2.2). */
+export const CHAVE_BASE_TESTE = 'rotavhsgo.ruasTesteURL'
+
+/**
+ * Envio de coordenadas ao provedor REAL: bloqueado até a confirmação dos termos de uso e a sua autorização
+ * específica (RB-2, 2026-11-26). Mudar exige nova aprovação.
+ */
+export const ENVIO_REAL_LIBERADO = false
+
+/** Envio permitido nesta versão? Só para o servidor de teste local, enquanto o envio real não for liberado. */
+export function envioPermitido(): boolean {
+  return baseDeTeste() !== null || ENVIO_REAL_LIBERADO
+}
+
+export interface Consentimento {
+  provedor: string
+  em: number
+  versao: 1
+}
+
+function lerConsentimento(): Consentimento | null {
+  try {
+    const c = JSON.parse(localStorage.getItem(CHAVE_CONSENTIMENTO) ?? 'null') as Consentimento | null
+    return c && c.versao === 1 && typeof c.provedor === 'string' ? c : null
+  } catch {
+    return null
+  }
+}
+
+/** Servidor de teste configurado (respostas controladas), ou null. */
+export function baseDeTeste(): string | null {
+  try {
+    const v = localStorage.getItem(CHAVE_BASE_TESTE)
+    if (!v) return null
+    const h = new URL(v).hostname
+    return h === '127.0.0.1' || h === 'localhost' || h === '10.0.2.2' ? v : null
+  } catch {
+    return null
+  }
+}
 
 function modoInicial(): ModoOtimizacao {
   try {
@@ -21,15 +62,17 @@ function modoInicial(): ModoOtimizacao {
 }
 
 export interface Disponibilidade {
-  /** O cálculo pelas ruas pode rodar agora? Nesta versão, sempre false (integração em desenvolvimento). */
-  pronto: false
+  /** O cálculo pelas ruas pode rodar agora? Só com servidor de TESTE local (o envio real ainda não é liberado). */
+  pronto: boolean
   tom: 'ok' | 'aviso' | 'erro' | 'neutro'
   titulo: string
   detalhe: string
 }
 
-export function disponibilidade(cofre: EstadoCofreTela, online: boolean): Disponibilidade {
-  const dev = 'A integração com o provedor ainda está em desenvolvimento: nenhuma rota pelas ruas é calculada nesta versão.'
+export function disponibilidade(cofre: EstadoCofreTela, online: boolean, teste: string | null = null, liberado = ENVIO_REAL_LIBERADO): Disponibilidade {
+  const dev = liberado
+    ? 'Envio ao provedor liberado.'
+    : 'O envio ao provedor real ainda não está liberado (termos de uso e sua autorização específica pendentes): nenhuma coordenada é enviada a ele nesta versão.'
   switch (cofre) {
     case 'verificando':
       return { pronto: false, tom: 'neutro', titulo: 'Verificando o cofre…', detalhe: dev }
@@ -42,7 +85,9 @@ export function disponibilidade(cofre: EstadoCofreTela, online: boolean): Dispon
     case 'ausente':
       return { pronto: false, tom: 'neutro', titulo: 'Sem chave cadastrada', detalhe: dev }
     case 'cadastrada':
-      return { pronto: false, tom: online ? 'ok' : 'aviso', titulo: online ? 'Chave cadastrada · em desenvolvimento' : 'Chave cadastrada · sem conexão', detalhe: dev }
+      if (teste) return { pronto: online, tom: online ? 'ok' : 'aviso', titulo: online ? 'Servidor de TESTE (respostas controladas)' : 'Servidor de teste · sem conexão', detalhe: 'Cálculo pelas ruas ligado a um servidor de teste local, com dados fictícios. Não é o provedor real.' }
+      if (liberado) return { pronto: online, tom: online ? 'ok' : 'aviso', titulo: online ? 'Pronto para calcular pelas ruas' : 'Sem conexão', detalhe: dev }
+      return { pronto: false, tom: online ? 'ok' : 'aviso', titulo: online ? 'Chave cadastrada · envio real ainda não liberado' : 'Chave cadastrada · sem conexão', detalhe: dev }
   }
 }
 
@@ -60,6 +105,10 @@ interface EstadoRuas {
   avisoRuas: 'otimizar' | 'recalcular' | null
   abrirAvisoRuas: (de: 'otimizar' | 'recalcular') => void
   fecharAvisoRuas: () => void
+  /** Autorização explícita para enviar coordenadas ao provedor (P-COORD). Revogável. */
+  consentimento: Consentimento | null
+  autorizarEnvio: (provedor: string) => void
+  revogarEnvio: () => void
 }
 
 const motivo = (e: unknown) => (e instanceof FalhaCofre ? e.message : 'Não foi possível acessar o cofre seguro.')
@@ -120,4 +169,22 @@ export const useRuas = create<EstadoRuas>()((set, get) => ({
   avisoRuas: null,
   abrirAvisoRuas: (de) => set({ avisoRuas: de }),
   fecharAvisoRuas: () => set({ avisoRuas: null }),
+  consentimento: lerConsentimento(),
+  autorizarEnvio: (provedor) => {
+    const c: Consentimento = { provedor, em: Date.now(), versao: 1 }
+    try {
+      localStorage.setItem(CHAVE_CONSENTIMENTO, JSON.stringify(c))
+    } catch {
+      /* sem armazenamento: vale só nesta visita */
+    }
+    set({ consentimento: c })
+  },
+  revogarEnvio: () => {
+    try {
+      localStorage.removeItem(CHAVE_CONSENTIMENTO)
+    } catch {
+      /* nada a fazer */
+    }
+    set({ consentimento: null })
+  },
 }))

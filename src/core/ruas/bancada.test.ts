@@ -8,7 +8,9 @@ import { roteirizar } from './fluxo'
 import { LIMITES_ORS } from './provedores'
 import { preverConsumo } from './relatorio'
 import { MalhaViaria } from './testes/malhaViaria'
-import { ProvedorSintetico } from './testes/provedorSintetico'
+import { provedorORS } from './ors'
+import { orsFalso } from './testes/orsFalso'
+import { CacheMatriz } from './cacheMatriz'
 
 // Tipos mínimos do Node (o projeto não inclui @types/node).
 declare const process: { env: Record<string, string | undefined>; memoryUsage(): { heapUsed: number } }
@@ -18,12 +20,23 @@ describe.runIf(process.env.BANCADA)('bancada RB-0', () => {
     const linhas: Record<string, unknown>[] = []
     for (const n of [50, 100, 150, 200, 300, 500]) {
       const malha = new MalhaViaria({ lado: 70, semente: 1000 + n, areasSemVia: 3 })
-      const prov = new ProvedorSintetico(malha)
+      const falso = orsFalso(malha)
+      const prov = provedorORS({ chave: falso.chave, fetch: falso.fetch, base: 'http://127.0.0.1:9/ors/v2', liberadoReal: false })
+      const tCli0 = performance.now()
       const pontos = [malha.coordenada(35 * 70 + 35), ...malha.pontosDeEntrega(n)]
       let t = 0
       const amb = { agora: () => t, esperar: async (ms: number) => void (t += ms) }
       const r = await roteirizar(prov, pontos, 'carro', amb)
+      const msCliente = performance.now() - tCli0
       const m = r.montagem!
+      // reotimização com cache: você andou um pouco
+      const cache = new CacheMatriz('ors', 'carro', 0)
+      cache.atualizar(m, r.coords, r.acessos)
+      const antesM = falso.estado.matriz
+      const antesS = falso.estado.snap
+      const nova = [malha.coordenada(34 * 70 + 33), ...pontos.slice(1)]
+      await roteirizar(prov, nova, 'carro', amb, undefined, undefined, { acessosConhecidos: nova.map((x, i) => (i ? cache.acessoConhecido(x) : undefined)), preencher: (mm, cs) => cache.preencher(mm, cs) })
+      const reotim = { matriz: falso.estado.matriz - antesM, encaixe: falso.estado.snap - antesS }
       const idx = r.paraMotor
       const { matriz, proibidos } = m.paraMotor(idx)
       const visitas = idx.slice(1).map((i) => ({ id: `v${i}` }))
@@ -47,7 +60,11 @@ describe.runIf(process.env.BANCADA)('bancada RB-0', () => {
         finalSemSaida: r.finalObrigatorio !== undefined,
         pedidos: { ...r.relatorio.pedidos, rotaPrevista: prev.pedidosRota },
         esperaLimiteS: Math.round(t / 1000),
-        kbRecebidos: Math.round(prov.contagem.bytes / 1024),
+        kbRecebidosMatrizORS: Math.round(r.relatorio.bytesRecebidos / 1024),
+        kbEnviados: Math.round(falso.estado.corpos.reduce((a, c) => a + c.length, 0) / 1024),
+        msClienteEMalha: Math.round(msCliente),
+        reotimizacao: reotim,
+        cacheKB: Math.round(JSON.stringify(cache.serializar()).length / 1024),
         matrizKB: Math.round(m.bytes / 1024),
         heapMotorMB: Math.round(((heap1 - heap0) / 1048576) * 10) / 10,
         motorMs: Math.round(msMotor),

@@ -125,11 +125,60 @@ export function montarTarefa(ordem: readonly string[], status: Record<string, St
   return { tarefa, feitas, pend, semCoord }
 }
 
+export type EtapaOtimizacao = 'origem' | 'encaixe' | 'matriz' | 'calculando'
+
+/** Contexto entregue à preparação pelas ruas (src/app/ruasOtimizacao.ts, carregado sob demanda). */
+export interface ContextoPreparacao {
+  tarefa: TarefaOtimizacao
+  pend: string[]
+  rotaId: string
+  termino: TerminoEscolhido
+  candidatas: string[][]
+  sinal: AbortSignal
+  progresso: (etapa: 'encaixe' | 'matriz', fracao: number, detalhe?: string) => void
+}
+export interface Preparado {
+  /** A mesma tarefa, com a matriz pelas ruas e só as visitas que entram no cálculo. */
+  tarefa: TarefaOtimizacao
+  /** Visitas pendentes de revisão (sem acesso ou sem percurso pelas ruas): ficam na posição anterior, nunca somem. */
+  revisar: string[]
+  /** Confere o resultado (ex.: nenhum trecho sem percurso). Devolve o motivo de recusa, ou null. */
+  validar?: (ordem: readonly string[]) => string | null
+  fonte: string
+}
+export interface OpcoesCalculo {
+  /** Modo pelas ruas: monta a matriz pelas ruas antes do motor. Falhas viram mensagem (sem trocar o modo). */
+  preparar?: (c: ContextoPreparacao) => Promise<Preparado>
+}
+
+/** Recoloca as visitas em revisão na posição relativa que tinham antes (nunca no fim por padrão, nunca somem). */
+export function inserirMantendoPosicao(nova: readonly string[], revisar: readonly string[], antes: readonly string[]): string[] {
+  if (!revisar.length) return [...nova]
+  const r = new Set(revisar)
+  const out = [...nova]
+  for (let k = 0; k < antes.length; k++) {
+    const id = antes[k]!
+    if (!r.has(id) || out.includes(id)) continue
+    // depois do vizinho anterior (na ordem antiga) que já está na nova ordem; sem nenhum, no começo
+    let pos = 0
+    for (let b = k - 1; b >= 0; b--) {
+      const i = out.indexOf(antes[b]!)
+      if (i >= 0) {
+        pos = i + 1
+        break
+      }
+    }
+    out.splice(pos, 0, id)
+  }
+  return out
+}
+
 /** Execução em andamento (manual ou automática) e o sinal de cancelamento. */
-let EXECUCAO: { sinal: { cancelado: boolean }; execucao: Execucao | null; tipo: 'manual' | 'automatica' } | null = null
+let EXECUCAO: { sinal: { cancelado: boolean }; execucao: Execucao | null; tipo: 'manual' | 'automatica'; abortar?: () => void } | null = null
 function cancelarExecucao() {
   if (!EXECUCAO) return
   EXECUCAO.sinal.cancelado = true
+  EXECUCAO.abortar?.()
   EXECUCAO.execucao?.cancelar()
   EXECUCAO = null
 }
@@ -193,16 +242,18 @@ interface Estado {
   /** De onde saiu a otimização atual (o ponto em si não fica no estado). */
   origemOtimizacao: TipoOrigem | null
   /** OTIMIZAR MINHA ROTA: sempre a partir da sua posição atual; roda em segundo plano e pode ser cancelada. */
-  otimizar: () => Promise<void>
+  otimizar: (opcoes?: OpcoesCalculo) => Promise<void>
   /** Otimização em andamento (para a tela mostrar o progresso e o botão Cancelar). */
-  otimizacao: { etapa: 'origem' | 'calculando'; progresso: number; tipo: 'otimizar' | 'recalcular' } | null
+  otimizacao: { etapa: EtapaOtimizacao; progresso: number; tipo: 'otimizar' | 'recalcular'; modo: 'rapida' | 'ruas'; detalhe?: string } | null
   /** Por que a última otimização não pôde começar ou terminar (com "Tentar de novo"). */
   falhaOtimizacao: string | null
+  /** Modo da otimização que falhou (no modo pelas ruas, a janela oferece a rápida — nunca troca sozinha). */
+  falhaModo: 'rapida' | 'ruas'
   fecharFalhaOtimizacao: () => void
   /** Cancela a otimização em andamento: a rota continua exatamente como estava. */
   cancelarOtimizacao: () => void
   /** Resultado da última otimização aplicada (números do modelo, sempre estimados). */
-  ultimaOtimizacao: { km: number; min: number; kmAntes: number; minAntes: number; ms: number; tipoMatriz: 'estimada' | 'ruas'; melhorou: boolean; paradas: number } | null
+  ultimaOtimizacao: { km: number; min: number; kmAntes: number; minAntes: number; ms: number; tipoMatriz: 'estimada' | 'ruas'; melhorou: boolean; paradas: number; fonte?: string; revisao?: number } | null
   termino: TerminoEscolhido
   definirTermino: (t: TerminoEscolhido) => void
   /** Marca (ou corrige) um pacote da visita. Quando não sobra pacote pendente, pula para a próxima. */
@@ -238,7 +289,7 @@ interface Estado {
   /** Marca os pacotes PENDENTES da visita selecionada (os já marcados não mudam) e pula para a próxima. */
   marcar: (st: Exclude<Status, 'pendente'>) => void
   desmarcar: (id: string) => void
-  recalcular: () => Promise<void>
+  recalcular: (opcoes?: OpcoesCalculo) => Promise<void>
   simularSugestao: () => void
   aceitarSugestao: () => void
   recusarSugestao: () => void
@@ -310,7 +361,7 @@ function usarRota(r: RotaImportada) {
   return {
     rota: r, rotaId, iniciadaEm: null, pacotes: pacotesIniciais(r), origemOtimizacao: null as TipoOrigem | null, fase: 'revisao' as Fase, ordem: [...r.ordemSpx],
     status: statusInicial(r), selecionada: r.ordemSpx[0]!, sugestao: null, ultimaAuto: null, planos: [spx], planoAtivo: spx.id as string | null,
-    alertas: alertasVazios(), retomada: null, otimizacao: null, falhaOtimizacao: null, ultimaOtimizacao: null, termino: { tipo: 'livre' } as TerminoEscolhido,
+    alertas: alertasVazios(), retomada: null, otimizacao: null, falhaOtimizacao: null, falhaModo: 'rapida' as const, ultimaOtimizacao: null, termino: { tipo: 'livre' } as TerminoEscolhido,
   }
 }
 
@@ -326,15 +377,17 @@ function resumoAtual(e: Estado, motivo: ResumoRota['motivo'], agora: number): Re
  * Pipeline comum de OTIMIZAR e RECALCULAR: obtém a sua posição atual, monta a tarefa só com as pendentes e calcula
  * em segundo plano. Cancelar (ou falhar) nunca mexe na rota. Devolve null quando não há resultado para aplicar.
  */
-async function calcular(tipo: 'otimizar' | 'recalcular') {
+async function calcular(tipo: 'otimizar' | 'recalcular', opcoes: OpcoesCalculo = {}) {
   const st = useEstado.setState
   const get = useEstado.getState
   const sinal = { cancelado: false }
-  EXECUCAO = { sinal, execucao: null, tipo: 'manual' }
-  st({ otimizacao: { etapa: 'origem', progresso: 0, tipo }, falhaOtimizacao: null })
+  const modo = opcoes.preparar ? ('ruas' as const) : ('rapida' as const)
+  const abortador = new AbortController()
+  EXECUCAO = { sinal, execucao: null, tipo: 'manual', abortar: () => abortador.abort() }
+  st({ otimizacao: { etapa: 'origem', progresso: 0, tipo, modo }, falhaOtimizacao: null, falhaModo: modo })
   const encerrar = (falha: string | null) => {
     if (EXECUCAO?.sinal === sinal) EXECUCAO = null
-    if (!sinal.cancelado) st({ otimizacao: null, falhaOtimizacao: falha })
+    if (!sinal.cancelado) st({ otimizacao: null, falhaOtimizacao: falha, falhaModo: modo })
     return null
   }
   let origem: OrigemObtida
@@ -349,9 +402,27 @@ async function calcular(tipo: 'otimizar' | 'recalcular') {
   const candidatas = planos.filter((p) => p.tipo !== 'spx').slice(-3).reverse().map((p) => p.ordem)
   const m = montarTarefa(ordem, status, origem.ponto, termino, candidatas)
   if (m.pend.length === 0) return encerrar(null)
-  st({ otimizacao: { etapa: 'calculando', progresso: 0, tipo } })
-  const execucao = iniciarOtimizacao(m.tarefa, (f) => {
-    if (!sinal.cancelado) st({ otimizacao: { etapa: 'calculando', progresso: f, tipo } })
+  let tarefa = m.tarefa
+  let preparado: Preparado | null = null
+  if (opcoes.preparar) {
+    st({ otimizacao: { etapa: 'encaixe', progresso: 0, tipo, modo, detalhe: 'Encaixando as paradas nas ruas…' } })
+    try {
+      preparado = await opcoes.preparar({
+        tarefa, pend: m.pend, rotaId, termino, candidatas, sinal: abortador.signal,
+        progresso: (etapa, fracao, detalhe) => {
+          if (!sinal.cancelado) st({ otimizacao: { etapa, progresso: fracao, tipo, modo, detalhe } })
+        },
+      })
+    } catch (e) {
+      if (sinal.cancelado) return null
+      return encerrar(e instanceof Error && e.name === 'FalhaRuas' ? e.message : 'Não foi possível calcular pelas ruas agora. A rota atual continua valendo.')
+    }
+    if (sinal.cancelado) return null
+    tarefa = preparado.tarefa
+  }
+  st({ otimizacao: { etapa: 'calculando', progresso: 0, tipo, modo } })
+  const execucao = iniciarOtimizacao(tarefa, (f) => {
+    if (!sinal.cancelado) st({ otimizacao: { etapa: 'calculando', progresso: f, tipo, modo } })
   })
   if (EXECUCAO?.sinal === sinal) EXECUCAO.execucao = execucao
   let res: ResultadoOtimizacao
@@ -362,11 +433,15 @@ async function calcular(tipo: 'otimizar' | 'recalcular') {
     return encerrar('Não foi possível calcular a rota agora. A ordem atual continua valendo. Tente de novo.')
   }
   if (sinal.cancelado) return null
+  const recusa = preparado?.validar?.(res.ordem)
+  if (recusa) return encerrar(recusa)
   const e = get()
   if (e.rotaId !== rotaId || e.ordem.join() !== ordem.join()) return encerrar('A rota mudou durante o cálculo. Toque de novo para otimizar com a situação atual.')
   if (montarTarefa(e.ordem, e.status, origem.ponto, termino).pend.join() !== m.pend.join()) return encerrar('Uma entrega foi marcada durante o cálculo. Toque de novo para otimizar só as pendentes.')
   encerrar(null)
-  return { res, origem, m, ordemAntes: ordem }
+  // Pendentes de revisão (modo pelas ruas) voltam para a posição relativa que tinham: nenhuma parada some.
+  const ordemPend = inserirMantendoPosicao(res.ordem, preparado?.revisar ?? [], m.pend)
+  return { res, origem, m, ordemAntes: ordem, ordemPend, preparado }
 }
 
 export const useEstado = create<Estado>((set, get) => ({
@@ -520,23 +595,24 @@ export const useEstado = create<Estado>((set, get) => ({
     set({ sugestao: { ordem: [...m.feitas, ...res.ordem, ...m.semCoord], ganhoMin: res.minAtual - res.min, ganhoKm: av.ganhoKm, ganhoPct: av.ganhoPct, origem: 'automatica', motivo, daPosicao: true }, ultimaAuto: agora })
     return true
   },
-  otimizar: async () => {
+  otimizar: async (opcoes) => {
     if (get().otimizacao) return
     cancelarExecucao() // um cálculo automático em andamento dá lugar ao seu
-    const resultado = await calcular('otimizar')
+    const resultado = await calcular('otimizar', opcoes)
     if (!resultado) return
-    const { res, origem, m, ordemAntes } = resultado
-    const nova = [...m.feitas, ...res.ordem, ...m.semCoord]
+    const { res, origem, m, ordemAntes, ordemPend, preparado } = resultado
+    const nova = [...m.feitas, ...ordemPend, ...m.semCoord]
     ORIGEM_USADA = { lat: origem.ponto.lat, lon: origem.ponto.lon }
     ORDEM_OTIMIZADA = nova
     const plano = novoPlano(get().rotaId, 'otimizada', nova, origem.tipo)
     set({
       fase: 'otimizada', destacarOtimizar: false, ordem: nova, sugestao: null, origemOtimizacao: origem.tipo, planos: podarPlanos([...get().planos, plano]), planoAtivo: plano.id,
-      ultimaOtimizacao: { km: res.km, min: res.min, kmAntes: res.kmAtual, minAntes: res.minAtual, ms: res.ms, tipoMatriz: res.tipoMatriz, melhorou: res.melhorou, paradas: res.ordem.length },
+      ultimaOtimizacao: { km: res.km, min: res.min, kmAntes: res.kmAtual, minAntes: res.minAtual, ms: res.ms, tipoMatriz: res.tipoMatriz, melhorou: res.melhorou, paradas: ordemPend.length, fonte: preparado?.fonte, revisao: preparado?.revisar.length ?? 0 },
       selecionada: nova.find((id) => get().status[id] === 'pendente') ?? get().selecionada,
     })
     void ordemAntes
-    get().avisar(res.melhorou ? `Rota otimizada a partir da sua posição · ${res.ordem.length} paradas` : 'A ordem atual já era a melhor pelo modelo; nada mudou')
+    const rev = preparado?.revisar.length ? ` · ${preparado.revisar.length} pendente(s) de revisão mantida(s) na posição anterior` : ''
+    get().avisar(res.melhorou || rev ? `Rota otimizada${preparado ? ' pelas ruas' : ''} a partir da sua posição · ${ordemPend.length} paradas${rev}` : 'A ordem atual já era a melhor pelo modelo; nada mudou')
   },
   cancelarOtimizacao: () => {
     if (!get().otimizacao) return
@@ -564,19 +640,19 @@ export const useEstado = create<Estado>((set, get) => ({
   silenciarAlertasNaRota: (sim) => set((e) => ({ alertas: { ...e.alertas, silenciadoNaRota: sim } })),
   definirAlertasLigados: (alertasLigados) => set({ alertasLigados }),
 
-  recalcular: async () => {
+  recalcular: async (opcoes) => {
     if (get().otimizacao) return
     cancelarExecucao()
-    const resultado = await calcular('recalcular')
+    const resultado = await calcular('recalcular', opcoes)
     if (!resultado) return
-    const { res, m } = resultado
+    const { res, m, ordemPend } = resultado
     const ganhoMin = Math.max(0, res.minAtual - res.min)
     if (!res.melhorou || ganhoMin < 0.5) {
       get().avisar('A ordem atual já é a melhor pelo modelo')
       return
     }
     const ganhoKm = Math.max(0, res.kmAtual - res.km)
-    set({ sugestao: { ordem: [...m.feitas, ...res.ordem, ...m.semCoord], ganhoMin, ganhoKm, ganhoPct: (ganhoMin / res.minAtual) * 100, origem: 'manual', motivo: 'manual', daPosicao: true } })
+    set({ sugestao: { ordem: [...m.feitas, ...ordemPend, ...m.semCoord], ganhoMin, ganhoKm, ganhoPct: (ganhoMin / res.minAtual) * 100, origem: 'manual', motivo: 'manual', daPosicao: true } })
   },
   simularSugestao: () => {
     // Cartão de sugestão com números FICTÍCIOS, só para testar a experiência (Etapa 1).

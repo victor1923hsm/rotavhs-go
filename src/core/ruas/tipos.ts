@@ -45,6 +45,8 @@ export interface BlocoMatriz {
   metros: (number | null)[][]
   /** Versão/data dos dados do mapa no provedor (para invalidar o cache quando o mapa muda). */
   versaoDados?: string
+  /** Tamanho da resposta (bytes), para o relatório de consumo. */
+  bytes?: number
 }
 
 /** Geometria de um trecho entre dois pontos consecutivos da sequência, pelas ruas. */
@@ -62,8 +64,11 @@ export type TipoFalha =
   | 'limite-minuto' // 429: esperar e continuar
   | 'cota-diaria' // 403 por cota: parar e guardar o que já veio
   | 'chave' // chave ausente ou inválida
-  | 'indisponivel' // 5xx, tempo esgotado, sem rede
+  | 'indisponivel' // 5xx
+  | 'tempo-esgotado' // o provedor não respondeu no tempo limite
+  | 'sem-conexao' // sem rede (o pedido nem chegou)
   | 'requisicao' // pedido recusado (parâmetro, limite do pedido)
+  | 'bloqueado' // envio ao provedor real ainda não liberado (termos/autorização pendentes)
   | 'cancelado'
 
 /** Falha de provedor. A mensagem nunca contém a chave nem dados da rota (só tipo e código). */

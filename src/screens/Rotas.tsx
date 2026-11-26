@@ -112,7 +112,8 @@ export function Rotas() {
       {e.fase !== 'revisao' && e.origemOtimizacao && (
         <p className="rotulo" style={{ margin: '4px 0 8px' }}>
           Otimizada a partir de: {e.origemOtimizacao === 'gps' ? 'sua posição no momento do cálculo' : e.origemOtimizacao === 'teste' ? 'posição de teste (rota de exemplo)' : '1ª parada da SPX (versão anterior do app)'}
-          {uo ? ` · ${uo.paradas} paradas em ${numero(uo.ms / 1000, 1)} s · distâncias aproximadas, sem ruas` : ''}
+          {uo ? ` · ${uo.paradas} paradas em ${numero(uo.ms / 1000, 1)} s · ${uo.tipoMatriz === 'ruas' ? `distâncias pelas ruas (${uo.fonte ?? 'provedor'})` : 'distâncias aproximadas, sem ruas'}` : ''}
+          {uo?.revisao ? ` · ${uo.revisao} parada(s) pendente(s) de revisão (sem acesso pelas ruas), mantida(s) na posição anterior` : ''}
         </p>
       )}
 
@@ -155,7 +156,7 @@ export function Rotas() {
 
       <div className="linha" style={{ justifyContent: 'space-between', marginTop: 16 }} ref={lista}>
         <h2 style={{ fontSize: 17, fontWeight: 500, margin: 0 }}>Sequência de paradas</h2>
-        <span className="rotulo">{e.fase === 'revisao' ? 'Ordem da SPX (referência)' : uo && uo.melhorou ? `−${numero(Math.max(0, uo.minAntes - uo.min), 0)} min · −${numero(Math.max(0, uo.kmAntes - uo.km))} km (aproximado)` : 'Ordem atual'}</span>
+        <span className="rotulo">{e.fase === 'revisao' ? 'Ordem da SPX (referência)' : uo && uo.melhorou ? `−${numero(Math.max(0, uo.minAntes - uo.min), 0)} min · −${numero(Math.max(0, uo.kmAntes - uo.km))} km (${uo.tipoMatriz === 'ruas' ? 'pelas ruas, modelo' : 'aproximado'})` : 'Ordem atual'}</span>
       </div>
       <div>
         {e.ordem.map((id, i) => {

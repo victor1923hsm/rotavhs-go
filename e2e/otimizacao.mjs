@@ -5,6 +5,7 @@
 //   node e2e/otimizacao.mjs navegador URL      (Chrome com geolocalização simulada)
 // Só dados SINTÉTICOS. O relatório tem só contagens, tempos e números de parada (fictícios).
 import { execSync } from 'node:child_process'
+import { iniciarORSFalso } from './ors-falso.mjs'
 
 const alvo = process.argv[2] ?? 'navegador'
 const PKG = 'io.github.victor1923hsm.rotavhsgo'
@@ -65,7 +66,10 @@ async function abrir() {
     }
     log('Android:', device.model(), '· processo do app:', String(await device.shell(`pidof ${PKG}`)).trim())
     return {
+      android: true,
       pid: async () => String(await device.shell(`pidof ${PKG}`)).trim(),
+      /** Servidor de teste local (respostas controladas) visível no emulador como 127.0.0.1. */
+      reverso: (porta) => execSync(`adb reverse tcp:${porta} tcp:${porta}`, { stdio: 'ignore' }),
       page,
       async tocar(x, y) {
         if (!caixa) await medir()
@@ -98,7 +102,9 @@ async function abrir() {
   log('Navegador: Chrome', b.version())
   return {
     page,
-    tocar: (x, y) => page.touchscreen.tap(x, y),
+    tocar(x, y) {
+      return this.page.touchscreen.tap(x, y)
+    },
     // Como um GPS de verdade: várias leituras seguidas no novo lugar (o app descarta um salto isolado).
     mudarPosicao: async (p) => {
       for (let i = 0; i < 4; i++) {
@@ -108,10 +114,8 @@ async function abrir() {
     },
     fechar: () => b.close(),
     async reabrir() {
-      const url = this.page.url()
-      await this.page.close()
-      this.page = await ctx.newPage()
-      await this.page.goto(url)
+      // No navegador: recarrega a página (tudo o que estava na memória se perde; a rota volta do IndexedDB).
+      await this.page.reload()
       await esperar(3000)
     },
   }
@@ -204,7 +208,7 @@ async function importar(ctx, n) {
     if (dlg) await ctx.tocar(dlg.x, dlg.y)
     return (await texto(ctx.page)).match(/Revise (\d+) paradas/)
   }, 40_000, 300)
-  if (!ok || Number(ok[1]) !== n) throw new Error(`a rota não abriu com ${n} paradas`)
+  if (!ok || Number(ok[1]) !== n) throw new Error(`a rota não abriu com ${n} paradas · tela: ${(await texto(ctx.page)).replace(/\s+/g, ' ').slice(-400)}`)
   await esperar(1500) // a transição para a tela Rotas termina antes do próximo toque
   await tocarBotao(ctx, 'Agora não', false)
 }
@@ -237,6 +241,150 @@ async function otimizar(ctx) {
     throw new Error(`a rota otimizada não apareceu em 90 s · ${(t.match(/GPS: [^\n]*/) ?? ['GPS: ?'])[0]} · ${(t.match(/Obtendo[^\n]*|Calculando[^\n]*/) ?? ['sem janela de andamento'])[0]}`)
   }
   return { totalS: (Date.now() - t0) / 1000, algoritmoS: Number(fim[2].replace(',', '.')), paradas: Number(fim[1]) }
+}
+
+/** OTIMIZAR (ou Recalcular) no modo "Pelas ruas reais": autoriza, confirma a estimativa e espera o desfecho. */
+async function otimizarRuas(ctx, botaoInicial = 'OTIMIZAR MINHA ROTA') {
+  const t0 = Date.now()
+  await tocarLivre(ctx, botaoInicial)
+  let estimativa = ''
+  let ultimo = ''
+  const fim = await aguardar(async () => {
+    for (const s of ['Autorizar e continuar', 'Calcular pelas ruas', 'Permitir localização']) {
+      const b = await botao(ctx.page, s)
+      if (b?.livre && !b.desabilitado) {
+        if (s === 'Calcular pelas ruas') estimativa = ((await texto(ctx.page)).match(/Consumo previsto[\s\S]*?Espera mínima[^\n]*/) ?? [''])[0].replace(/\s+/g, ' ')
+        await ctx.tocar(b.x, b.y)
+        await esperar(400)
+        return null
+      }
+    }
+    const t = await texto(ctx.page)
+    const est = (t.match(/Sua posição atual[^\n]*|Encaixe das paradas[^\n]*|Distâncias e tempos[^\n]*|Melhor ordem[^\n]*/g) ?? []).join(' | ')
+    if (est && est !== ultimo) {
+      log(`  [${((Date.now() - t0) / 1000).toFixed(1)} s] ${est.slice(0, 160)}`)
+      ultimo = est
+    }
+    if (t.includes('Não foi possível calcular pelas ruas')) return { falha: t.split('Não foi possível calcular pelas ruas')[1].slice(0, 200).trim() }
+    if (t.includes('Indisponível neste navegador')) return { parar: 'Indisponível neste navegador' }
+    if (t.includes('Nova ordem sugerida') || t.includes('já é a melhor')) return { recalculo: t.includes('Nova ordem sugerida') ? 'sugestão' : 'já era a melhor' }
+    const m = t.match(/Otimizada a partir de: sua posição no momento do cálculo · (\d+) paradas em ([\d,]+) s · ([^\n·]*)/)
+    return m ? { paradas: Number(m[1]), algoritmoS: Number(m[2].replace(',', '.')), rotulo: m[3].trim() } : null
+  }, 240_000, 200)
+  if (!fim) throw new Error('o cálculo pelas ruas não terminou em 240 s')
+  return { ...fim, totalS: (Date.now() - t0) / 1000, estimativa }
+}
+
+async function casosRuas(ctx, caso) {
+  if (!ctx.android) {
+    await caso('PWA: "Pelas ruas" indisponível no navegador, oferece a rápida', async () => {
+      const { pts } = planilha(50)
+      posicao = { lat: pts[0].lat, lon: pts[0].lon + 0.0002 }
+      await ctx.mudarPosicao(posicao)
+      await importar(ctx, 50)
+      await tocarLivre(ctx, 'Pelas ruas reais')
+      const r = await otimizarRuas(ctx)
+      if (!r.parar) throw new Error('não informou a indisponibilidade')
+      await tocarLivre(ctx, 'Usar a otimização rápida')
+      const t = await aguardar(async () => ((await texto(ctx.page)).match(/Otimizada a partir de[^\n]*aproximadas, sem ruas/) ? true : null), 60_000, 300)
+      if (!t) throw new Error('a otimização rápida não terminou')
+      return 'indisponível no PWA (sem cofre); a rápida foi usada só com o seu toque'
+    })
+    return
+  }
+  const ors = await iniciarORSFalso(8765)
+  ctx.reverso(8765)
+  try {
+    await ctx.page.evaluate(() => localStorage.setItem('rotavhsgo.ruasTesteURL', 'http://127.0.0.1:8765/ors/v2'))
+    await ctx.page.evaluate(() => window.Capacitor.nativePromise('CofreChave', 'guardar', { valor: 'TESTE-rotavhs-chave-ficticia-ors-0001' }))
+    await caso('Pelas ruas (servidor de teste): 100 paradas, com 429 no meio', async () => {
+      ors.modo('limite')
+      const { pts } = planilha(100)
+      posicao = { lat: pts[10].lat, lon: pts[10].lon + 0.0002 }
+      await ctx.mudarPosicao(posicao)
+      await importar(ctx, 100)
+      await tocarLivre(ctx, 'Pelas ruas reais')
+      const r = await otimizarRuas(ctx)
+      if (r.falha) throw new Error(`o app informou: ${r.falha}`)
+      if (r.paradas !== 100 || (await sequencia(ctx.page)).length !== 100) throw new Error('paradas perdidas')
+      if (!/pelas ruas \(servidor de teste\)/.test(r.rotulo)) throw new Error(`rótulo errado: ${r.rotulo}`)
+      if (!ors.estado.recusados429) throw new Error('o servidor não chegou a responder 429')
+      const textos = [...ors.estado.textosRecebidos].sort().join(',')
+      if (textos !== 'distance,duration,m') throw new Error(`o corpo enviado tinha textos além do técnico: ${textos}`)
+      return `toque → rota pronta ${r.totalS.toFixed(1)} s · ${ors.estado.matriz} pedidos de matriz + ${ors.estado.recusados429} recusados (429) · ${ors.estado.snap} de encaixe · estimativa mostrada: "${r.estimativa.slice(0, 120)}"`
+    })
+    await caso('Reotimizar só as pendentes pelas ruas: reaproveita o cache', async () => {
+      ors.modo('normal')
+      await tocarLivre(ctx, 'Iniciar entregas')
+      await esperar(800)
+      const { pts } = planilha(100)
+      posicao = { lat: pts[20].lat, lon: pts[20].lon + 0.0003 }
+      await ctx.mudarPosicao(posicao)
+      const m0 = ors.estado.matriz
+      const r = await otimizarRuas(ctx, 'Recalcular pendentes')
+      if (r.falha) throw new Error(`o app informou: ${r.falha}`)
+      const novos = ors.estado.matriz - m0
+      if (novos !== 1) throw new Error(`pediu ${novos} matrizes (esperado: só a linha da nova posição)`)
+      return `${r.recalculo ?? 'ok'} em ${r.totalS.toFixed(1)} s · 1 pedido de matriz (só a sua nova posição)`
+    })
+    await caso('Pelas ruas: chave recusada → explica e oferece a rápida (sem troca silenciosa)', async () => {
+      ors.modo('chave-invalida')
+      await importar(ctx, 50)
+      const antes = await sequencia(ctx.page)
+      const r = await otimizarRuas(ctx)
+      if (!r.falha || !/recusou a chave/.test(r.falha)) throw new Error(`esperava falha de chave, veio ${JSON.stringify(r).slice(0, 120)}`)
+      if ((await sequencia(ctx.page)).join() !== antes.join()) throw new Error('a ordem mudou sozinha')
+      await tocarLivre(ctx, 'Usar a otimização rápida')
+      const ok = await aguardar(async () => ((await texto(ctx.page)).match(/Otimizada a partir de[^\n]*aproximadas, sem ruas/) ? true : null), 60_000, 300)
+      if (!ok) throw new Error('a rápida não terminou depois do toque')
+      return 'mensagem clara; rota intacta até o seu toque; a rápida rodou só depois do toque'
+    })
+    await caso('Pelas ruas: sem conexão → explica, a rota não muda', async () => {
+      ors.modo('fechar')
+      await importar(ctx, 50)
+      const antes = await sequencia(ctx.page)
+      const r = await otimizarRuas(ctx)
+      if (!r.falha || !/Sem conexão|indisponível|demorou/.test(r.falha)) throw new Error(`esperava falha de conexão, veio ${JSON.stringify(r).slice(0, 120)}`)
+      await tocarLivre(ctx, 'Fechar')
+      if ((await sequencia(ctx.page)).join() !== antes.join()) throw new Error('a ordem mudou')
+      return r.falha.slice(0, 90)
+    })
+    await caso('Pelas ruas: cancelar durante o cálculo não muda a rota', async () => {
+      ors.modo('travar')
+      await importar(ctx, 50)
+      const antes = await sequencia(ctx.page)
+      await tocarLivre(ctx, 'OTIMIZAR MINHA ROTA')
+      const cal = await aguardar(() => botao(ctx.page, 'Calcular pelas ruas'), 20_000, 200)
+      if (!cal) throw new Error('a estimativa não apareceu')
+      await ctx.tocar(cal.x, cal.y)
+      const etapa = await aguardar(async () => /Encaixe das paradas|Distâncias e tempos/.test(await texto(ctx.page)), 30_000, 200)
+      if (!etapa) throw new Error('as etapas pelas ruas não apareceram')
+      await tocarLivre(ctx, 'Cancelar')
+      const ok = await aguardar(async () => (await texto(ctx.page)).includes('cancelada'), 10_000, 200)
+      ors.modo('normal')
+      if (!ok) throw new Error('não confirmou o cancelamento')
+      if ((await sequencia(ctx.page)).join() !== antes.join()) throw new Error('a ordem mudou depois de cancelar')
+      return 'cancelado na etapa de encaixe/distâncias; ordem e fase iguais'
+    })
+    await caso('Pelas ruas: 500 paradas (limite de 36 pedidos/min respeitado)', async () => {
+      ors.modo('normal')
+      const { pts } = planilha(500)
+      posicao = { lat: pts[499].lat + 0.0002, lon: pts[499].lon }
+      await ctx.mudarPosicao(posicao)
+      await importar(ctx, 500)
+      const m0 = ors.estado.matriz
+      const r = await otimizarRuas(ctx)
+      if (r.falha) throw new Error(`o app informou: ${r.falha}`)
+      if (r.paradas !== 500) throw new Error('paradas perdidas')
+      return `toque → rota pronta ${r.totalS.toFixed(1)} s · algoritmo ${r.algoritmoS.toFixed(1)} s · ${ors.estado.matriz - m0} pedidos de matriz`
+    })
+  } finally {
+    await ctx.page.evaluate(() => {
+      localStorage.removeItem('rotavhsgo.ruasTesteURL')
+      localStorage.setItem('rotavhsgo.modoOtimizacao', 'rapida')
+    }).catch(() => {})
+    await ors.fechar()
+  }
 }
 
 async function main() {
@@ -329,6 +477,10 @@ async function main() {
       await esperar(800)
       const antes = await sequencia(ctx.page)
       await ctx.reabrir()
+      // O app pergunta se continua a rota encontrada (comportamento esperado ao reabrir).
+      const cont = await aguardar(() => botao(ctx.page, 'Continuar de onde parei'), 8000, 300)
+      if (cont) await ctx.tocar(cont.x, cont.y)
+      await esperar(800)
       await ir(ctx.page, '/rotas')
       const ok = await aguardar(async () => (await sequencia(ctx.page)).length === 100, 20_000, 300)
       if (!ok) throw new Error('a rota não voltou com 100 paradas')
@@ -339,6 +491,8 @@ async function main() {
       return 'mesma ordem otimizada, mesma fase, 100 paradas'
     })
   }
+  // Por último: os casos "pelas ruas" deixam o modo escolhido em "Pelas ruas reais".
+  if (!filtro || 'ruas'.includes(filtro)) await casosRuas(ctx, caso)
   log('\nErros de JavaScript:', erros.length ? erros.join(' | ') : 'nenhum')
   const falhas = resultados.filter((r) => !r.ok).length
   log(`\nRESUMO OTIMIZAÇÃO (${alvo}): ${resultados.length - falhas}/${resultados.length} casos OK`)

@@ -128,6 +128,12 @@ export interface Armazenamento {
   salvarVeiculo(v: Veiculo): Promise<void>
   lerPreferencias(): Promise<Preferencias>
   salvarPreferencias(p: Preferencias): Promise<void>
+  /**
+   * Cache da matriz pelas ruas DESTA rota (RB-2). Fica na tabela de distâncias da rota e é apagado com ela ao
+   * finalizar, encerrar ou excluir. Só coordenadas de acesso e números; nada de endereço ou código.
+   */
+  lerMatrizRuas(rotaId: string): Promise<unknown>
+  salvarMatrizRuas(rotaId: string, dados: unknown): Promise<void>
   /** Pede ao navegador para não apagar os dados sozinho (navigator.storage.persist). */
   pedirPersistencia(): Promise<boolean>
 }

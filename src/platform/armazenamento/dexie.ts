@@ -333,6 +333,19 @@ export function armazenamentoDexie(db = new BancoRotaVHS()): Armazenamento & { d
       await db.settings.put({ chave: 'preferencias', valor: { ...p } })
     },
 
+    async lerMatrizRuas(rotaId) {
+      const l = await db.distanceCache.get(rotaId)
+      return l?.origem === 'ruas' ? l.dados : null
+    },
+    async salvarMatrizRuas(rotaId, dados) {
+      // Só grava para uma rota que existe (nunca recria dados de uma rota já apagada).
+      await db.transaction('rw', [db.routes, db.distanceCache], async () => {
+        const r = await db.routes.get(rotaId)
+        if (!r || r.status !== 'ativa') return
+        await db.distanceCache.put({ routeId: rotaId, origem: 'ruas', dados })
+      })
+    },
+
     async pedirPersistencia() {
       try {
         if (typeof navigator === 'undefined' || !navigator.storage?.persist) return false

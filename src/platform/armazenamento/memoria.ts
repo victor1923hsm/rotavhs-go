@@ -23,7 +23,9 @@ export function armazenamentoMemoria(): Armazenamento {
   let veiculo: Veiculo | undefined
   let preferencias: Preferencias = { ...PREFERENCIAS_PADRAO }
   let seq = 0
+  const matrizes = new Map<string, unknown>()
   const limpar = (rotaId: string) => {
+    matrizes.delete(rotaId)
     rotas.delete(rotaId)
     eventos = eventos.filter((e) => e.rotaId !== rotaId)
     planos = planos.filter((p) => p.rotaId !== rotaId)
@@ -70,6 +72,7 @@ export function armazenamentoMemoria(): Armazenamento {
       return ids
     },
     async apagarRota(rotaId) {
+      matrizes.delete(rotaId)
       rotas.delete(rotaId)
       eventos = eventos.filter((e) => e.rotaId !== rotaId)
       planos = planos.filter((p) => p.rotaId !== rotaId)
@@ -106,6 +109,12 @@ export function armazenamentoMemoria(): Armazenamento {
     },
     async salvarPreferencias(p) {
       preferencias = { ...p }
+    },
+    async lerMatrizRuas(rotaId) {
+      return matrizes.get(rotaId) ?? null
+    },
+    async salvarMatrizRuas(rotaId, dados) {
+      if (rotas.has(rotaId)) matrizes.set(rotaId, dados)
     },
     async pedirPersistencia() {
       return false
