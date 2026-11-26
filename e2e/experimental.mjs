@@ -149,10 +149,13 @@ async function main() {
       if (!fim) throw new Error('o cálculo não terminou em 180 s')
       const tr = fim.match(/Traçado real pelas ruas: (\d+) trecho/)
       if (!tr || Number(tr[1]) !== 10) throw new Error(`traçado incompleto: ${tr?.[0] ?? 'nenhum'}`)
+      // O mapa (WebGL) desenhou mesmo o traçado? (conta feições renderizadas na camada do traçado)
+      const desenhado = await aguardar(async () => Number(await page.evaluate(() => document.querySelector('[aria-label="Mapa do teste de roteirização"]')?.dataset.tracadoDesenhado ?? '0')) || null, 20_000)
+      if (!desenhado) throw new Error('o mapa não desenhou o traçado (0 feições renderizadas)')
       await captura(page, `1-tracado-10${REAL ? '-real' : ''}`)
       const linha = (fim.match(/Percurso desenhado[^\n]*\n?[^\n]*/) ?? [''])[0].replace(/\s+/g, ' ')
       const ped = (fim.match(/Pedidos: [^\n]*?traçado/) ?? [''])[0]
-      return `toque → pronto ${((Date.now() - t0) / 1000).toFixed(1)} s · ${linha} · ${ped}`
+      return `toque → pronto ${((Date.now() - t0) / 1000).toFixed(1)} s · ${linha} · ${ped} · mapa: ${desenhado} feição(ões) do traçado renderizada(s)`
     })
 
     await caso('Comparação rápida × pelas ruas (mesma matriz) aparece rotulada', async () => {

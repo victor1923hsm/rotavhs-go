@@ -39,10 +39,19 @@ export default function MapaExperimental({ partida, paradas, posicao, linhas, ao
 
   useEffect(() => {
     if (!caixa.current) return
-    const m = new maplibregl.Map({ container: caixa.current, style: ESTILO, center: [CENTRO_GOIANIA.lon, CENTRO_GOIANIA.lat], zoom: 12.5, attributionControl: { compact: true }, dragRotate: false, pitchWithRotate: false })
+    const m = new maplibregl.Map({ container: caixa.current, style: ESTILO, center: [CENTRO_GOIANIA.lon, CENTRO_GOIANIA.lat], zoom: 12.5, attributionControl: false, dragRotate: false, pitchWithRotate: false })
     m.touchZoomRotate.disableRotation()
     m.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-right')
-    m.addControl(new maplibregl.AttributionControl({ customAttribution: '© openrouteservice.org by HeiGIT | Map data © OpenStreetMap contributors', compact: true }))
+    // Uma só atribuição (fundo + traçado), recolhida no ⓘ para não cobrir os pinos.
+    m.addControl(new maplibregl.AttributionControl({ customAttribution: 'Traçado © openrouteservice.org by HeiGIT | © OpenStreetMap contributors', compact: true }))
+    const recolher = () => caixa.current?.querySelector('.maplibregl-ctrl-attrib')?.classList.remove('maplibregl-compact-show')
+    m.once('load', recolher)
+    m.once('idle', recolher)
+    // Conferência do teste automático: quantos trechos do traçado o mapa de fato desenhou (WebGL).
+    m.on('idle', () => {
+      if (!caixa.current || !m.getLayer('tracado')) return
+      caixa.current.dataset.tracadoDesenhado = String(new Set(m.queryRenderedFeatures({ layers: ['tracado'] }).map((f) => JSON.stringify(f.geometry).slice(0, 60))).size)
+    })
     mapa.current = m
     // Sem internet e sem o estilo guardado: troca por um fundo liso local, para o traçado salvo e os pinos
     // continuarem visíveis (sem ruas desenhadas por baixo).
