@@ -180,10 +180,20 @@ async function otimizar(ctx) {
   await ctx.tocar(b.x, b.y)
   const comecou = await aguardar(async () => /Obtendo|Calculando|Otimizada a partir|Não foi possível|Usar sua localização/.test(await texto(ctx.page)), 4000, 100)
   if (!comecou) throw new Error('o toque em OTIMIZAR não iniciou nada')
+  let ultimo = ''
   const fim = await aguardar(async () => {
     const perm = await botao(ctx.page, 'Permitir localização')
-    if (perm) await ctx.tocar(perm.x, perm.y)
+    if (perm) {
+      log('  (tocou em "Permitir localização")')
+      await ctx.tocar(perm.x, perm.y)
+    }
     const t = await texto(ctx.page)
+    // Diário do que a tela mostra (só textos de estado; dados sintéticos).
+    const estado = (t.match(/GPS: [^\n]*|Obtendo[^\n]*|Calculando[^\n]*|Otimizada a partir[^\n]*|Não foi possível[^\n]*|cancelada[^\n]*|REVISÃO|OTIMIZADA|Usar sua localização\?/g) ?? []).join(' | ')
+    if (estado !== ultimo) {
+      log(`  [${((Date.now() - t0) / 1000).toFixed(1)} s] ${estado}`)
+      ultimo = estado
+    }
     if (t.includes('Não foi possível otimizar')) throw new Error(`o app informou: ${t.split('Não foi possível otimizar')[1].slice(0, 160).trim()}`)
     return t.match(/Otimizada a partir de: sua posição no momento do cálculo · (\d+) paradas em ([\d,]+) s/)
   }, 90_000, 150)
